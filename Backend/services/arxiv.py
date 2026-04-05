@@ -1,26 +1,42 @@
 import os
 import httpx
 import xml.etree.ElementTree as ET
+import asyncio
 
 async def search_papers(arxiv_query: str, max_results: int = 3):
     """
     Hits the arXiv API with our translated boolean string and returns paper metadata.
+    Includes strict rate-limiting compliance to prevent 429 errors.
     """
-    # Just the base URL without the f-string query
     url = "https://export.arxiv.org/api/query"
     
-    # We put our variables into a dictionary
     params = {
         "search_query": arxiv_query,
         "start": 0,
         "max_results": max_results
     }
 
+    # 1. Be polite: ArXiv demands custom User-Agents!
+    headers = {
+        "User-Agent": "ArXivGrapher_DevBot/1.0 (mailto:your_email@example.com)"
+    }
+
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            # Pass the params dictionary to httpx so it safely URL-encodes everything!
+        # 2. Force a safety delay to prevent React Strict Mode double-fetches from triggering a 429
+        print("⏳ Waiting 3.1 seconds to comply with arXiv rate limits...")
+        await asyncio.sleep(3.1)
+        
+        # 3. Pass the headers into the httpx client
+        async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
             response = await client.get(url, params=params)
+            
+            # If we STILL get a 429, catch it gracefully without crashing
+            if response.status_code == 429:
+                print("🔴 ArXiv rate limit hit! We are temporarily blocked.")
+                return []
+                
             response.raise_for_status()
+            
     except httpx.RequestError as e:
         print(f"⚠️ Network error while contacting arXiv: {e}")
         return []
@@ -36,30 +52,22 @@ async def search_papers(arxiv_query: str, max_results: int = 3):
         return []
 
     ns = {'atom': 'http://www.w3.org/2005/Atom'}
-
     papers = []
 
     for entry in root.findall('atom:entry', ns):
         try:
-            # ID extraction
             id_elem = entry.find('atom:id', ns)
             if id_elem is None or id_elem.text is None:
                 continue
-            paper_id_url = id_elem.text
-            paper_id = paper_id_url.split('/abs/')[-1]
+            paper_id = id_elem.text.split('/abs/')[-1]
 
-            # Title extraction
             title_elem = entry.find('atom:title', ns)
-            if title_elem is None or title_elem.text is None:
-                title = "No title available"
-            else:
-                title = title_elem.text.replace('\n', ' ').strip()
+            title = title_elem.text.replace('\n', ' ').strip() if title_elem is not None and title_elem.text else "No title available"
 
             papers.append({
                 "id": paper_id,
                 "title": title
             })
-
         except Exception as e:
             print(f"⚠️ Skipping malformed entry: {e}")
             continue
@@ -67,9 +75,13 @@ async def search_papers(arxiv_query: str, max_results: int = 3):
     return papers
 
 
+# ---------------------------------------------------------
+# LEGACY / UTILITY FUNCTION (Not actively used in main pipeline)
+# ---------------------------------------------------------
 async def download_pdf(paper_id: str, save_dir: str = "temp") -> str:
     """
     Downloads the PDF of a paper given its arXiv ID to a local folder.
+    (Currently bypassed in favor of HTML extraction via ar5iv)
     """
     try:
         os.makedirs(save_dir, exist_ok=True)
@@ -83,10 +95,11 @@ async def download_pdf(paper_id: str, save_dir: str = "temp") -> str:
     print(f"📥 Downloading PDF for {paper_id}...")
 
     try:
-        # UPDATED: Added follow_redirects=True to handle arXiv's URL routing
+        # Added follow_redirects=True to handle arXiv's URL routing
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             response = await client.get(pdf_url)
             response.raise_for_status()
+            
     except httpx.RequestError as e:
         print(f"⚠️ Network error while downloading PDF: {e}")
         return ""
