@@ -1,40 +1,51 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as d3 from "d3";
-
 // ─────────────────────────────────────────────
 //  DATA FORMAT (what the graph function expects)
 // ─────────────────────────────────────────────
 //
 //  interface GraphNode {
-//    id: string;                     // unique stable ID (e.g. "paper_1234", "model_bert", "ds_imagenet")
+//    id: string;                       // unique stable ID (e.g. "paper_1234", "model_bert", "ds_imagenet")
 //    type: "paper" | "model" | "dataset";
-//    label: string;                  // short display name shown on canvas
+//    label: string;                    // short display name shown on canvas
 //    metadata: {
 //      // PAPER fields
-//      title?: string;               // full title
-  //      authors?: string[];
+//      title?: string;                 // full title
+//      authors?: string[] | { authorId?: string; name: string }[];
 //      year?: number;
-//      venue?: string;               // e.g. "NeurIPS 2023"
+//      publicationDate?: string;       // e.g. "2017-06-12"
+//      venue?: string;                 // e.g. "Neural Information Processing Systems"
+//      publicationVenue?: { name: string; type?: string; alternate_names?: string[]; id?: string | null };
+//      journal?: { name: string; volume?: string };
+//      publicationTypes?: string[];
 //      arxivId?: string;
 //      semanticScholarId?: string;
 //      abstract?: string;
+//      tldr?: { text: string; model?: string };
 //      citationCount?: number;
+//      influentialCitationCount?: number;
+//      referenceCount?: number;
+//      fieldsOfStudy?: string[];
+//      isOpenAccess?: boolean;
+//      openAccessPdf?: { url: string; status?: string; license?: string } | null;
+//      
 //      // MODEL fields
-//      framework?: string;           // e.g. "PyTorch", "JAX"
-//      task?: string;                // e.g. "Text Classification"
-//      paramCount?: string;          // e.g. "340M"
-//      pwcUrl?: string;              // Papers with Code URL
+//      framework?: string;             // e.g. "PyTorch", "JAX"
+//      task?: string;                  // e.g. "Text Classification"
+//      paramCount?: string;            // e.g. "340M"
+//      pwcUrl?: string;                // Papers with Code URL
+//      
 //      // DATASET fields
-//      size?: string;                // e.g. "1.2M samples"
-//      task?: string;
-//      pwcUrl?: string;
+//      size?: string;                  // e.g. "1.2M samples"
+//      // task?: string;               // (shared with Model)
+//      // pwcUrl?: string;             // (shared with Model)
 //    }
 //  }
 //
 //  interface GraphEdge {
-//    id: string;                     // unique edge ID
-//    source: string;                 // node id
-//    target: string;                 // node id
+//    id: string;                       // unique edge ID
+//    source: string;                   // node id
+//    target: string;                   // node id
 //    type: "uses_model" | "uses_dataset";
 //  }
 //

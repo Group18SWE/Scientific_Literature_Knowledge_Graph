@@ -1,0 +1,8 @@
+pipeline:
+  maas:
+    enabled: false
+  ocr_api:
+    api_host: "127.0.0.1"
+    api_port: 8080
+  page_loader:
+    max_tokens: 8192 # Forces the SDK to only ask for 4,096 output tokens per chunk!
