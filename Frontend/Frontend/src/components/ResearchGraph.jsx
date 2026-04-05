@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as d3 from "d3";
 // ─────────────────────────────────────────────
 //  DATA FORMAT (what the graph function expects)
@@ -432,7 +432,65 @@ const NODE_CONFIG = {
 const EDGE_CONFIG = {
   uses_model:   { color: "#f59e0b44", width: 1.5 },
   uses_dataset: { color: "#a78bfa44", width: 1.5 },
+  connected_to: { color: "#64748b44", width: 1.5 },
 };
+const CITATION_SLIDER_STEP = 500;
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+
+function normalizeEdgeType(edgeType) {
+  const t = String(edgeType || "").toLowerCase();
+  if (t === "uses_model") return "uses_model";
+  if (t === "uses_dataset") return "uses_dataset";
+  return "connected_to";
+}
+
+function normalizeGraphData(graph) {
+  const nodes = Array.isArray(graph?.nodes)
+    ? graph.nodes.map((node) => ({
+        ...node,
+        type: node?.type || "paper",
+        label: node?.label || node?.id || "Unknown",
+        metadata: node?.metadata || {},
+      }))
+    : [];
+
+  const edges = Array.isArray(graph?.edges)
+    ? graph.edges
+        .map((edge, index) => ({
+          ...edge,
+          id: edge?.id || `edge_${index}`,
+          source: typeof edge?.source === "object" ? edge.source.id : edge?.source,
+          target: typeof edge?.target === "object" ? edge.target.id : edge?.target,
+          type: normalizeEdgeType(edge?.type),
+        }))
+        .filter((edge) => edge.source && edge.target)
+    : [];
+
+  return { nodes, edges };
+}
+
+function getYearBounds(data) {
+  const years = data.nodes
+    .filter((n) => n.type === "paper" && n.metadata?.year != null)
+    .map((n) => n.metadata.year);
+  if (years.length === 0) {
+    const now = new Date().getFullYear();
+    return { min: now, max: now };
+  }
+  return { min: Math.min(...years), max: Math.max(...years) };
+}
+
+function getMaxCitationCount(data) {
+  const counts = data.nodes
+    .filter((n) => n.type === "paper" && n.metadata?.citationCount != null)
+    .map((n) => n.metadata.citationCount);
+  return counts.length ? Math.max(...counts) : 0;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
 //* Building an adjacency list from the edge array 
 function buildAdjacency(edges) {
@@ -473,30 +531,80 @@ function getSubgraph(startId, edges) {
   return { neighborIds, edgeIds: visitedEdges };
 }
 
-//* Derive year bounds from data so reset always matches the actual dataset
-const ALL_YEARS = DUMMY_DATA.nodes
-  .filter((n) => n.type === "paper" && n.metadata.year)
-  .map((n) => n.metadata.year);
-const DATA_MIN_YEAR = Math.min(...ALL_YEARS);
-const DATA_MAX_YEAR = Math.max(...ALL_YEARS);
-
-const DEFAULT_FILTERS = {
-  paper: true,
-  model: true,
-  dataset: true,
-  yearMin: DATA_MIN_YEAR,
-  yearMax: DATA_MAX_YEAR,
-  minCitations: 0,
-};
-
 export default function ResearchGraph() {
   const svgRef = useRef(null);
   const simulationRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
-  const [hoveredNode, setHoveredNode] = useState(null);
-  const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
+  const [filters, setFilters] = useState(() => {
+    const bounds = getYearBounds(DUMMY_DATA);
+    return {
+      paper: true,
+      model: true,
+      dataset: true,
+      yearMin: bounds.min,
+      yearMax: bounds.max,
+      minCitations: 0,
+    };
+  });
   const [searchQuery, setSearchQuery] = useState("");
+  const [apiQuery, setApiQuery] = useState("");
   const [graphData, setGraphData] = useState(DUMMY_DATA);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const { dataMinYear, dataMaxYear, dataMaxCitations } = useMemo(() => {
+    const yearBounds = getYearBounds(graphData);
+    return {
+      dataMinYear: yearBounds.min,
+      dataMaxYear: yearBounds.max,
+      dataMaxCitations: getMaxCitationCount(graphData),
+    };
+  }, [graphData]);
+
+  const defaultFilters = useMemo(
+    () => ({
+      paper: true,
+      model: true,
+      dataset: true,
+      yearMin: dataMinYear,
+      yearMax: dataMaxYear,
+      minCitations: 0,
+    }),
+    [dataMinYear, dataMaxYear]
+  );
+
+  useEffect(() => {
+    setFilters((f) => ({
+      ...f,
+      yearMin: clamp(f.yearMin, dataMinYear, dataMaxYear),
+      yearMax: clamp(f.yearMax, dataMinYear, dataMaxYear),
+      minCitations: Math.min(f.minCitations, Math.max(dataMaxCitations, 0)),
+    }));
+  }, [dataMinYear, dataMaxYear, dataMaxCitations]);
+
+  const handleApiSearch = useCallback(async () => {
+    const query = apiQuery.trim();
+    if (!query) return;
+
+    setIsLoading(true);
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/search/?query=${encodeURIComponent(query)}`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(`Search request failed (${response.status})`);
+      }
+      const payload = await response.json();
+      setGraphData(normalizeGraphData(payload?.graph));
+      setSelectedNode(null);
+      setSearchQuery("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to fetch graph data.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [apiQuery]);
 
   // Filtered data based on all active filters
   const filteredData = useCallback(() => {
@@ -544,7 +652,7 @@ export default function ResearchGraph() {
     // Defs: glows, arrowheads
     const defs = svg.append("defs");
 
-    Object.entries(NODE_CONFIG).forEach(([type, cfg]) => {
+    Object.keys(NODE_CONFIG).forEach((type) => {
       const filter = defs.append("filter").attr("id", `glow-${type}`).attr("x", "-50%").attr("y", "-50%").attr("width", "200%").attr("height", "200%");
       filter.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "blur");
       const merge = filter.append("feMerge");
@@ -613,9 +721,7 @@ export default function ResearchGraph() {
       .on("click", (event, d) => {
         event.stopPropagation();
         setSelectedNode((prev) => (prev?.id === d.id ? null : { ...d }));
-      })
-      .on("mouseenter", (event, d) => setHoveredNode(d.id))
-      .on("mouseleave", () => setHoveredNode(null));
+      });
 
     // Node shapes
     node.each(function (d) {
@@ -702,13 +808,7 @@ export default function ResearchGraph() {
     if (!selectedNode) {
       // Reset all
       svg.selectAll(".node").each(function () {
-        d3.select(this)
-          .attr("filter", null)
-          .style("opacity", 1)
-          .attr("transform", (d) => {
-            const cur = d3.select(this).attr("transform");
-            return cur;
-          });
+        d3.select(this).attr("filter", null).style("opacity", 1);
       });
       svg.selectAll(".edge").style("opacity", 1).attr("stroke-width", (d) => EDGE_CONFIG[d.type].width);
       return;
@@ -823,20 +923,40 @@ export default function ResearchGraph() {
           </div>
         </div>
 
-        {/* Search */}
-        <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#334155", fontSize: 12 }}>⌕</span>
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="search nodes…"
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ position: "relative" }}>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#334155", fontSize: 12 }}>⌕</span>
+            <input
+              value={apiQuery}
+              onChange={(e) => setApiQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleApiSearch();
+              }}
+              placeholder="search papers via backend…"
+              style={{
+                background: "#0a1628", border: "1px solid #1e3a5f",
+                borderRadius: 8, padding: "7px 14px 7px 28px",
+                color: "#94a3b8", fontSize: 11, width: 260,
+                fontFamily: "'JetBrains Mono', monospace", outline: "none",
+              }}
+            />
+          </div>
+          <button
+            onClick={handleApiSearch}
+            disabled={isLoading || !apiQuery.trim()}
             style={{
-              background: "#0a1628", border: "1px solid #1e3a5f",
-              borderRadius: 8, padding: "7px 14px 7px 28px",
-              color: "#94a3b8", fontSize: 11, width: 220,
-              fontFamily: "'JetBrains Mono', monospace", outline: "none",
+              padding: "7px 12px",
+              borderRadius: 8,
+              border: "1px solid #1e3a5f",
+              background: isLoading ? "#0f172a" : "#0a1628",
+              color: "#94a3b8",
+              fontSize: 11,
+              cursor: isLoading ? "not-allowed" : "pointer",
+              fontFamily: "'JetBrains Mono', monospace",
             }}
-          />
+          >
+            {isLoading ? "Searching…" : "Search"}
+          </button>
         </div>
 
         {/* Stats */}
@@ -901,7 +1021,7 @@ export default function ResearchGraph() {
               <div style={{ fontSize: 9, color: "#334155", marginBottom: 4, letterSpacing: "0.08em" }}>FROM</div>
               <input
                 type="range"
-                min={DATA_MIN_YEAR} max={DATA_MAX_YEAR} step={1}
+                min={dataMinYear} max={dataMaxYear} step={1}
                 value={filters.yearMin}
                 onChange={(e) => {
                   const v = Number(e.target.value);
@@ -915,7 +1035,7 @@ export default function ResearchGraph() {
               <div style={{ fontSize: 9, color: "#334155", marginBottom: 4, letterSpacing: "0.08em" }}>TO</div>
               <input
                 type="range"
-                min={DATA_MIN_YEAR} max={DATA_MAX_YEAR} step={1}
+                min={dataMinYear} max={dataMaxYear} step={1}
                 value={filters.yearMax}
                 onChange={(e) => {
                   const v = Number(e.target.value);
@@ -943,16 +1063,37 @@ export default function ResearchGraph() {
             </div>
             <input
               type="range"
-              min={0} max={90000} step={500}
+              min={0} max={Math.max(CITATION_SLIDER_STEP, dataMaxCitations)} step={CITATION_SLIDER_STEP}
               value={filters.minCitations}
               onChange={(e) => setFilters((f) => ({ ...f, minCitations: Number(e.target.value) }))}
               style={{ width: "100%", accentColor: "#a78bfa", cursor: "pointer" }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
               <span style={{ fontSize: 9, color: "#1e3a5f" }}>0</span>
-              <span style={{ fontSize: 9, color: "#1e3a5f" }}>90k</span>
+              <span style={{ fontSize: 9, color: "#1e3a5f" }}>{Math.max(CITATION_SLIDER_STEP, dataMaxCitations).toLocaleString()}</span>
             </div>
           </div>
+
+           {/* LOCAL SEARCH */}
+           <div>
+             <div style={{ fontSize: 9, color: "#1e3a5f", letterSpacing: "0.15em", fontWeight: 600, marginBottom: 12 }}>LOCAL FILTER</div>
+             <input
+               value={searchQuery}
+               onChange={(e) => setSearchQuery(e.target.value)}
+               placeholder="filter loaded nodes…"
+               style={{
+                 width: "100%",
+                 background: "#0a1628",
+                 border: "1px solid #1e3a5f",
+                 borderRadius: 8,
+                 padding: "7px 10px",
+                 color: "#94a3b8",
+                 fontSize: 11,
+                 fontFamily: "'JetBrains Mono', monospace",
+                 outline: "none",
+               }}
+             />
+           </div>
 
           {/* EDGE TYPES */}
           <div>
@@ -983,7 +1124,7 @@ export default function ResearchGraph() {
           <div style={{ marginTop: "auto" }}>
             <button
               onClick={() => {
-                setFilters({ ...DEFAULT_FILTERS });
+                setFilters({ ...defaultFilters });
                 setSearchQuery("");
                 setSelectedNode(null);
               }}
@@ -1032,6 +1173,22 @@ export default function ResearchGraph() {
             }}>
               <div style={{ fontSize: 32 }}>⬡</div>
               <div style={{ fontSize: 12 }}>No nodes match the current filters</div>
+            </div>
+          )}
+
+          {errorMessage && (
+            <div style={{
+              position: "absolute",
+              top: 16,
+              left: 16,
+              background: "#3f1d1d",
+              border: "1px solid #7f1d1d",
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontSize: 11,
+              color: "#fecaca",
+            }}>
+              {errorMessage}
             </div>
           )}
 
