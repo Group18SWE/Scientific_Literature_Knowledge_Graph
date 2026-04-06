@@ -18,7 +18,7 @@ async def search_papers(arxiv_query: str, max_results: int = 3):
 
     # 1. Be polite: ArXiv demands custom User-Agents!
     headers = {
-        "User-Agent": "ArXivGrapher_DevBot/1.0 (mailto:your_email@example.com)"
+        "User-Agent": "ArXivGrapher_DevBot/1.0 (mailto:saketishaan123@gmail.com)"
     }
 
     try:

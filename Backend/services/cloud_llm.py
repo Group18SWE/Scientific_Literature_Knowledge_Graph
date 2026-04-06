@@ -36,21 +36,29 @@ class PaperExtraction(BaseModel):
 # ---------------------------------------------------------------------------
 # CORE AI FUNCTIONS
 # ---------------------------------------------------------------------------
-
 async def generate_arxiv_query(user_input: str) -> str:
     """
-    Translates a natural language user query into a strict arXiv API boolean string.
+    Translates a natural language user query into an optimized arXiv API boolean string.
     """
     prompt = f"""
-    You are an expert research assistant. Convert the following user query into a strict arXiv API boolean search string.
-    Return ONLY the search string without any quotes, markdown formatting, or extra conversational text.
+    You are an expert academic research assistant. Convert the following user query into an optimized arXiv API boolean search string.
+    
+    CRITICAL RULES FOR ARXIV API:
+    1. NO EXACT PHRASES: Never put long phrases in quotes (e.g., avoid "handwriting detection"). Break them into individual AND keywords (e.g., all:handwriting AND all:detection).
+    2. USE SYNONYMS: Use OR statements grouped in parentheses for common synonyms to avoid missing papers (e.g., (all:handwriting OR all:handwritten)).
+    3. STRIP FILLER: Completely ignore conversational words like "latest", "recent", "papers", "show me", "about", "via", "using".
+    4. Use exact quotes ONLY for highly specific, unique named entities like "SIMCLR" or "ResNet".
+    5. Return ONLY the search string without any quotes, markdown formatting, or conversational text.
     
     Examples:
+    User: "latest research papers on handwriting detection via image processing"
+    Output: (all:handwriting OR all:handwritten) AND all:detection AND (all:image OR all:vision)
+    
     User: "Show me recent papers about graph neural networks"
-    Output: all:"graph neural network"
+    Output: all:graph AND all:neural AND all:network
     
     User: "LLMs used for healthcare and medicine"
-    Output: all:"large language model" AND (all:"healthcare" OR all:"medicine")
+    Output: (all:LLM OR all:"large language model") AND (all:healthcare OR all:medicine)
     
     User: "{user_input}"
     Output:
@@ -70,7 +78,6 @@ async def generate_arxiv_query(user_input: str) -> str:
     except Exception as e:
         logger.error(f"⚠️ Error communicating with Gemini for query translation: {e}")
         return "ERROR"
-
 
 async def extract_entities(parsed_text: str) -> dict:
     """
