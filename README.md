@@ -119,7 +119,7 @@ flowchart LR
     end
 
     FEGR -->|POST /search| ROUTES
-    ROUTES -->|{nodes, edges}| FEGR
+    ROUTES -->|"{nodes, edges}"| FEGR
 ```
 
 ### Runtime sequence for primary user flow (`/search`)
@@ -244,7 +244,7 @@ flowchart LR
 
     subgraph Presentation
       UI[Frontend Search + Filters]
-      GFX[Graph Rendering (D3)]
+      GFX["Graph Rendering (D3)"]
     end
 
     subgraph API
