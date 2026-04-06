@@ -22,17 +22,56 @@ This project builds an interactive knowledge graph of scientific papers, models,
 ## High-Level Architecture
 
 ```mermaid
-flowchart LR
-    U[User] --> F[React + D3 Frontend]
-    F -->|POST /search?query=...| A[FastAPI Backend]
-    A --> Q[Gemini Query Translator]
-    A --> X[arXiv API]
-    A --> H[ar5iv HTML Fetch + Parse]
-    A --> E[LLM Entity Extraction]
-    E --> N[(Neo4j AuraDB)]
-    A --> N
-    N --> A
-    A --> F
+flowchart TB
+    %% Client layer
+    subgraph L1[Client Layer]
+      U[User]
+      FE[React + D3 Frontend\nResearchGraph.jsx]
+      U -->|Natural language query| FE
+      FE -->|Filter/search interactions| FE
+    end
+
+    %% API orchestration layer
+    subgraph L2[Backend API & Orchestration Layer]
+      APP[FastAPI App\nmain.py]
+      RT[API Routes\napi/routes.py]
+      PROC[Paper Orchestrator\nprocess_single_paper]
+      APP --> RT
+      RT --> PROC
+    end
+
+    %% Service integrations layer
+    subgraph L3[Service Integration Layer]
+      LLMQ[Gemini Query Translation\ngenerate_arxiv_query]
+      ARX[arXiv API Search\nsearch_papers]
+      HTML[ar5iv HTML Parser\nfetch_and_parse_ar5iv]
+      LLME[Entity Extractor\nextract_entities]
+    end
+
+    %% Data & worker layer
+    subgraph L4[Data & Worker Layer]
+      DB[(Neo4j AuraDB)]
+      DBAPI[Database Access Layer\ncore/database.py]
+      Q[(Async Queue\npaper_queue)]
+      W[Background Worker\nworker/processor.py]
+      W --> Q
+      W --> HTML
+      W --> LLME
+      W --> DBAPI
+    end
+
+    FE -->|POST /search/?query=...| RT
+    RT --> LLMQ
+    RT --> ARX
+    ARX -->|paper id + title list| PROC
+    PROC -->|cache check / upsert / graph query| DBAPI
+    PROC --> HTML
+    PROC --> LLME
+    LLME -->|models + datasets| DBAPI
+    DBAPI --> DB
+    DB --> DBAPI
+    DBAPI -->|nodes + edges JSON| RT
+    RT -->|graph payload| FE
 ```
 
 ---
@@ -42,21 +81,45 @@ flowchart LR
 ### Interaction Graph (Backend + Frontend)
 
 ```mermaid
-flowchart TD
-    M[main.py] --> R[api/routes.py]
-    M --> D[core/database.py]
-    M --> W[worker/processor.py]
-    R --> C[services/cloud_llm.py]
-    R --> A[services/arxiv.py]
-    R --> P[services/process_paper.py]
-    P --> H[services/html_parser.py]
-    P --> C
-    P --> D
-    W --> H
-    W --> C
-    W --> D
-    FE[Frontend ResearchGraph.jsx] -->|fetch /search| R
-    FE -->|renders nodes/edges| UI[D3 Graph Canvas]
+flowchart LR
+    subgraph Frontend
+      FEAPP[App.jsx]
+      FEGR[ResearchGraph.jsx]
+      D3V[D3 Visualization Layer]
+      FEAPP --> FEGR --> D3V
+    end
+
+    subgraph Backend
+      MAIN[main.py]
+      ROUTES[api/routes.py]
+      CONFIG[core/config.py]
+      DBCORE[core/database.py]
+      QUEUE[worker/queue.py]
+      WORKER[worker/processor.py]
+      ARX[services/arxiv.py]
+      LLM[services/cloud_llm.py]
+      PARSER[services/html_parser.py]
+      PIPE[services/process_paper.py]
+
+      MAIN --> ROUTES
+      MAIN --> DBCORE
+      MAIN --> WORKER
+      WORKER --> QUEUE
+      ROUTES --> ARX
+      ROUTES --> LLM
+      ROUTES --> PIPE
+      PIPE --> PARSER
+      PIPE --> LLM
+      PIPE --> DBCORE
+      WORKER --> PARSER
+      WORKER --> LLM
+      WORKER --> DBCORE
+      CONFIG --> DBCORE
+      CONFIG --> LLM
+    end
+
+    FEGR -->|POST /search| ROUTES
+    ROUTES -->|{nodes, edges}| FEGR
 ```
 
 ### Runtime sequence for primary user flow (`/search`)
@@ -65,20 +128,27 @@ flowchart TD
 sequenceDiagram
     participant User
     participant FE as Frontend (ResearchGraph)
-    participant API as FastAPI /search
-    participant LLMQ as Query Translator
+    participant API as FastAPI /search route
+    participant LLMQ as Gemini Query Translator
     participant ARX as arXiv API
-    participant PROC as process_single_paper (concurrent)
+    participant PROC as Paper Processor (concurrent)
     participant AR5 as ar5iv HTML
-    participant LLME as Entity Extractor
-    participant DB as Neo4j
+    participant LLME as LLM Entity Extractor
+    participant DB as Neo4j + DB Layer
 
+    rect rgb(12, 22, 40)
     User->>FE: Enter query + click Search
     FE->>API: POST /search/?query=...
+    end
+
+    rect rgb(16, 32, 52)
     API->>LLMQ: generate_arxiv_query()
     LLMQ-->>API: arXiv boolean query
     API->>ARX: search_papers()
     ARX-->>API: top paper list
+    end
+
+    rect rgb(22, 36, 58)
     par For each paper
         API->>PROC: process_single_paper()
         PROC->>DB: check_if_paper_exists()
@@ -88,10 +158,14 @@ sequenceDiagram
             PROC->>DB: save_graph_to_db()
         end
     end
+    end
+
+    rect rgb(18, 30, 50)
     API->>DB: get_graph_for_papers()
     DB-->>API: nodes + edges
     API-->>FE: graph payload
     FE-->>User: Interactive filtered graph
+    end
 ```
 
 ---
@@ -163,17 +237,40 @@ The system uses a modular, service-oriented backend pipeline and a graph-native 
 #### High-level design (DFD / flow)
 
 ```mermaid
-flowchart TD
-    A[User Query] --> B[Frontend Search UI]
-    B --> C[FastAPI Search Endpoint]
-    C --> D[Query Translation]
-    D --> E[arXiv Retrieval]
-    E --> F[Per-paper Processing]
-    F --> G[HTML Parsing]
-    G --> H[Entity Extraction]
-    H --> I[Neo4j Persistence]
-    I --> J[Graph Query]
-    J --> K[Frontend Graph Rendering]
+flowchart LR
+    subgraph Input
+      UQ[User Query]
+    end
+
+    subgraph Presentation
+      UI[Frontend Search + Filters]
+      GFX[Graph Rendering (D3)]
+    end
+
+    subgraph API
+      EP[/POST /search/]
+      ORCH[Search Orchestration]
+    end
+
+    subgraph Retrieval_Extraction
+      TQ[Translate Query]
+      SRCH[Search arXiv]
+      PP[Process Papers Concurrently]
+      PARSE[Parse ar5iv HTML]
+      EXTR[Extract Model/Dataset Entities]
+    end
+
+    subgraph Persistence
+      UPSERT[Upsert Graph Entities]
+      READ[Query Graph for Paper IDs]
+      NEO[(Neo4j Graph DB)]
+    end
+
+    UQ --> UI --> EP --> ORCH
+    ORCH --> TQ --> SRCH --> PP
+    PP --> PARSE --> EXTR --> UPSERT --> NEO
+    ORCH --> READ --> NEO
+    NEO --> READ --> ORCH --> GFX
 ```
 
 #### Low-level design (algorithmic view)
