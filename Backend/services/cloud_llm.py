@@ -76,7 +76,7 @@ async def generate_arxiv_query(user_input: str) -> str:
             return response_text.strip()
     
     except Exception as e:
-        logger.error(f"⚠️ Error communicating with Gemini for query translation: {e}")
+        logger.error(f"Error communicating with Gemini for query translation: {e}")
         return "ERROR"
 
 async def extract_entities(parsed_text: str) -> dict:
@@ -84,7 +84,7 @@ async def extract_entities(parsed_text: str) -> dict:
     Passes the raw paper text to the GenAI API to extract models and datasets.
     Forces the output into a strict JSON format based on the PaperExtraction schema.
     """
-    logger.info("🧠 Passing text to GenAI for deep entity extraction...")
+    logger.info("Passing text to GenAI for deep entity extraction...")
     
     prompt = f"""
     You are an expert AI research assistant. Read the following academic paper text 
@@ -120,6 +120,6 @@ async def extract_entities(parsed_text: str) -> dict:
         return extracted_data
 
     except Exception as e:
-        logger.error(f"🔴 Entity Extraction failed: {e}")
+        logger.error(f"Entity Extraction failed: {e}")
         # Return empty lists so the pipeline doesn't crash on failure
         return {"models": [], "datasets": []}

@@ -22,14 +22,14 @@ class Neo4jConnection:
             self.driver = AsyncGraphDatabase.driver(uri, auth=auth)
             
             await self.driver.verify_connectivity()
-            print("🟢 Successfully connected to Neo4j AuraDB!")
+            print("Successfully connected to Neo4j AuraDB!")
         except Exception as e:
-            print(f"🔴 Failed to connect to Neo4j: {e}")
+            print(f"Failed to connect to Neo4j: {e}")
 
     async def close(self):
         if self.driver is not None:
             await self.driver.close()
-            print("🛑 Neo4j connection closed.")
+            print("Neo4j connection closed.")
 
 # Create a single instance to use throughout the app
 db = Neo4jConnection()
@@ -75,7 +75,7 @@ async def save_graph_to_db(paper_id: str, entities: dict[str, Any], paper_metada
     Takes the JSON from Gemma and writes it into Neo4j using MERGE to avoid duplicates.
     """
     if db.driver is None:
-        print("⚠️ Database not connected!")
+        print("Database not connected!")
         return
         
     if paper_metadata is None:

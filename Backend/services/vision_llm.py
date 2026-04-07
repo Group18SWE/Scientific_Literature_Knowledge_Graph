@@ -7,7 +7,7 @@ async def parse_pdf_to_markdown(pdf_path: str) -> str:
     Passes the PDF to the local vLLM server via the GLM-OCR SDK.
     Layout detection runs on CPU RAM to preserve GPU VRAM.
     """
-    print(f"👁️‍🗨️ GLM-OCR SDK analyzing {pdf_path}...")
+    print(f"GLM-OCR SDK analyzing {pdf_path}...")
     
     try:
         # Initialize the parser. 
@@ -36,5 +36,5 @@ async def parse_pdf_to_markdown(pdf_path: str) -> str:
             return markdown_content.strip()
 
     except Exception as e:
-        print(f"🔴 GLM-OCR Pipeline failed: {e}")
+        print(f"GLM-OCR Pipeline failed: {e}")
         return ""

@@ -9,7 +9,7 @@ from api.routes import router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manages the startup and shutdown sequence of our API."""
-    print("🚀 Starting up ArXiv Grapher API...")
+    print("Starting up ArXiv Grapher API...")
     await db.connect()
     
     CONCURRENCY_LIMIT = 3
@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     
     yield 
     
-    print("🛑 Shutting down application...")
+    print("Shutting down application...")
     for task in worker_tasks:
         task.cancel()
     await db.close()
