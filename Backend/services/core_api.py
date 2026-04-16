@@ -15,7 +15,7 @@ async def resolve_core_id_from_doi(doi: str) -> str | None:
     if not doi:
         return None
 
-    url = f"{CORE_BASE_URL}/search/works"
+    url = f"{CORE_BASE_URL}/search/works/"
     params = {"q": f"doi:{doi}", "limit": 1}
 
     try:
@@ -39,7 +39,7 @@ async def fetch_core_work(core_id: str) -> dict | None:
     if not core_id:
         return None
 
-    url = f"{CORE_BASE_URL}/works/{core_id}"
+    url = f"{CORE_BASE_URL}/works/{core_id}/"
     try:
         async with httpx.AsyncClient(timeout=30.0, headers=_core_headers()) as client:
             response = await client.get(url)
