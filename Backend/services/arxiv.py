@@ -1,5 +1,5 @@
 import os
-import httpx
+import aiohttp
 import xml.etree.ElementTree as ET
 import asyncio
 
@@ -26,27 +26,25 @@ async def search_papers(arxiv_query: str, max_results: int = 3):
         print("⏳ Waiting 3.1 seconds to comply with arXiv rate limits...")
         await asyncio.sleep(3.1)
         
-        # 3. Pass the headers into the httpx client
-        async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
-            response = await client.get(url, params=params)
+        # 3. Pass the headers into the aiohttp client
+        timeout = aiohttp.ClientTimeout(total=20.0)
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as client:
+            async with client.get(url, params=params, allow_redirects=True) as response:
+                # If we STILL get a 429, catch it gracefully without crashing
+                if response.status == 429:
+                    print("🔴 ArXiv rate limit hit! We are temporarily blocked.")
+                    return []
+
+                response.raise_for_status()
+                response_text = await response.text()
             
-            # If we STILL get a 429, catch it gracefully without crashing
-            if response.status_code == 429:
-                print("🔴 ArXiv rate limit hit! We are temporarily blocked.")
-                return []
-                
-            response.raise_for_status()
-            
-    except httpx.RequestError as e:
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         print(f"⚠️ Network error while contacting arXiv: {e}")
-        return []
-    except httpx.HTTPStatusError as e:
-        print(f"⚠️ Bad response from arXiv: {e}")
         return []
 
     # Parse XML safely
     try:
-        root = ET.fromstring(response.text)
+        root = ET.fromstring(response_text)
     except ET.ParseError as e:
         print(f"⚠️ Failed to parse XML: {e}")
         return []
@@ -95,21 +93,19 @@ async def download_pdf(paper_id: str, save_dir: str = "temp") -> str:
     print(f"📥 Downloading PDF for {paper_id}...")
 
     try:
-        # Added follow_redirects=True to handle arXiv's URL routing
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            response = await client.get(pdf_url)
-            response.raise_for_status()
-            
-    except httpx.RequestError as e:
+        timeout = aiohttp.ClientTimeout(total=60.0)
+        async with aiohttp.ClientSession(timeout=timeout) as client:
+            async with client.get(pdf_url, allow_redirects=True) as response:
+                response.raise_for_status()
+                response_content = await response.read()
+
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         print(f"⚠️ Network error while downloading PDF: {e}")
-        return ""
-    except httpx.HTTPStatusError as e:
-        print(f"⚠️ Failed to download PDF (bad status): {e}")
         return ""
 
     try:
         with open(filepath, 'wb') as f:
-            f.write(response.content)
+            f.write(response_content)
     except Exception as e:
         print(f"⚠️ Failed to save PDF: {e}")
         return ""

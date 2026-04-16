@@ -1,4 +1,4 @@
-import httpx
+import aiohttp
 from core.config import settings
 
 OPENALEX_WORKS_URL = "https://api.openalex.org/works"
@@ -52,14 +52,14 @@ async def search_papers(query: str, max_results: int = 10) -> list[dict]:
         headers["User-Agent"] = f"ScientificLiteratureKG/1.0 (mailto:{settings.OPENALEX_MAILTO})"
 
     try:
-        async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
-            response = await client.get(OPENALEX_WORKS_URL, params=params)
-            response.raise_for_status()
+        timeout = aiohttp.ClientTimeout(total=20.0)
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as client:
+            async with client.get(OPENALEX_WORKS_URL, params=params, allow_redirects=True) as response:
+                response.raise_for_status()
+                payload = await response.json()
     except Exception as exc:
         print(f"⚠️ OpenAlex request failed: {exc}")
         return []
-
-    payload = response.json()
     results = payload.get("results", []) if isinstance(payload, dict) else []
 
     papers: list[dict] = []

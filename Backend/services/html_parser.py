@@ -1,4 +1,4 @@
-import httpx
+import aiohttp
 from bs4 import BeautifulSoup
 import logging
 
@@ -21,18 +21,19 @@ async def fetch_and_parse_ar5iv(paper_id: str) -> str:
     
     try:
         # We use async context manager for non-blocking HTTP requests
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(url, follow_redirects=True)
-            
-            # If the paper hasn't been compiled to HTML by arXiv yet, it might return 404
-            if response.status_code != 200:
-                logger.warning(f"⚠️ ar5iv HTML not found for {paper_id} (Status: {response.status_code})")
-                return ""
-            
-            logger.info("✅ HTML downloaded! Parsing with BeautifulSoup...")
-            
+        timeout = aiohttp.ClientTimeout(total=15.0)
+        async with aiohttp.ClientSession(timeout=timeout) as client:
+            async with client.get(url, allow_redirects=True) as response:
+                # If the paper hasn't been compiled to HTML by arXiv yet, it might return 404
+                if response.status != 200:
+                    logger.warning(f"⚠️ ar5iv HTML not found for {paper_id} (Status: {response.status})")
+                    return ""
+
+                logger.info("✅ HTML downloaded! Parsing with BeautifulSoup...")
+                html = await response.text()
+
             # Parse the HTML using the fast lxml parser
-            soup = BeautifulSoup(response.text, "lxml")
+            soup = BeautifulSoup(html, "lxml")
             
             # Remove scripts, styles, and potentially massive reference sections to save tokens
             for element in soup(["script", "style"]):

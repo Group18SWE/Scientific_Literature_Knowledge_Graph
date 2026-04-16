@@ -1,4 +1,4 @@
-import httpx
+import aiohttp
 from core.config import settings
 
 CORE_BASE_URL = "https://api.core.ac.uk/v3"
@@ -15,18 +15,19 @@ async def resolve_core_id_from_doi(doi: str) -> str | None:
     if not doi:
         return None
 
-    url = f"{CORE_BASE_URL}/search/works/"
+    url = f"{CORE_BASE_URL}/search/works"
     params = {"q": f"doi:{doi}", "limit": 1}
 
     try:
-        async with httpx.AsyncClient(timeout=20.0, headers=_core_headers()) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
+        timeout = aiohttp.ClientTimeout(total=20.0)
+        async with aiohttp.ClientSession(timeout=timeout, headers=_core_headers()) as client:
+            async with client.get(url, params=params, allow_redirects=True) as response:
+                response.raise_for_status()
+                payload = await response.json() if response.content_length != 0 else {}
     except Exception as exc:
         print(f"⚠️ CORE DOI lookup failed for {doi}: {exc}")
         return None
 
-    payload = response.json() if response.content else {}
     results = payload.get("results", []) if isinstance(payload, dict) else []
     if not results:
         return None
@@ -39,13 +40,13 @@ async def fetch_core_work(core_id: str) -> dict | None:
     if not core_id:
         return None
 
-    url = f"{CORE_BASE_URL}/works/{core_id}/"
+    url = f"{CORE_BASE_URL}/works/{core_id}"
     try:
-        async with httpx.AsyncClient(timeout=30.0, headers=_core_headers()) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        timeout = aiohttp.ClientTimeout(total=30.0)
+        async with aiohttp.ClientSession(timeout=timeout, headers=_core_headers()) as client:
+            async with client.get(url, allow_redirects=True) as response:
+                response.raise_for_status()
+                return await response.json() if response.content_length != 0 else None
     except Exception as exc:
         print(f"⚠️ CORE work fetch failed for {core_id}: {exc}")
         return None
-
-    return response.json() if response.content else None
