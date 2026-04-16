@@ -69,6 +69,24 @@ async def check_if_paper_exists(paper_id: str) -> bool:
         record = await result.single()
         return record is not None
 
+async def check_if_paper_enriched(paper_id: str) -> bool:
+    """
+    Returns True when a Paper already has model/dataset enrichment edges.
+    """
+    if db.driver is None:
+        return False
+
+    query = """
+    MATCH (p:Paper {id: $paper_id})
+    OPTIONAL MATCH (p)-[r:USES_MODEL|USES_DATASET]->()
+    RETURN count(r) > 0 AS enriched
+    """
+
+    async with db.driver.session() as session:
+        result = await session.run(query, paper_id=paper_id)
+        record = await result.single()
+        return bool(record and record.get("enriched"))
+
 
 async def save_graph_to_db(paper_id: str, entities: dict[str, Any], paper_metadata: Optional[dict[str,Any]] = None):
     """
@@ -149,7 +167,7 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
     query = """
     MATCH (p:Paper) WHERE p.id IN $paper_ids
     OPTIONAL MATCH (p)-[r]->(target)
-    RETURN p, r, target
+    RETURN p, r, type(r) AS rel_type, target
     """
 
     nodes = {}
@@ -177,9 +195,9 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
 
             # 2. Check for existence of target and relationship
             target_node = record.get("target")
-            rel = record.get("r")
+            rel_type = record.get("rel_type")
 
-            if target_node and rel:
+            if target_node and rel_type:
                 t_id = target_node["id"]
                 
                 # Add the Target node if not already seen
@@ -196,7 +214,7 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
                     "id": f"{p_id}-{t_id}",
                     "source": p_id,
                     "target": t_id,
-                    "type": rel[1] if isinstance(rel, tuple) else "CONNECTED_TO"
+                    "type": rel_type
                 })
 
     return {

@@ -551,6 +551,7 @@ export default function ResearchGraph() {
   const [graphData, setGraphData] = useState(DUMMY_DATA);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [queuedEnrichmentCount, setQueuedEnrichmentCount] = useState(0);
 
   const { dataMinYear, dataMaxYear, dataMaxCitations } = useMemo(() => {
     const yearBounds = getYearBounds(graphData);
@@ -597,6 +598,7 @@ export default function ResearchGraph() {
       }
       const payload = await response.json();
       setGraphData(normalizeGraphData(payload?.graph));
+      setQueuedEnrichmentCount(Number(payload?.enrichment_queued || 0));
       setSelectedNode(null);
       setSearchQuery("");
     } catch (error) {
@@ -932,7 +934,7 @@ export default function ResearchGraph() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleApiSearch();
               }}
-              placeholder="search papers via backend…"
+              placeholder="search open-access literature…"
               style={{
                 background: "#0a1628", border: "1px solid #1e3a5f",
                 borderRadius: 8, padding: "7px 14px 7px 28px",
@@ -957,6 +959,11 @@ export default function ResearchGraph() {
           >
             {isLoading ? "Searching…" : "Search"}
           </button>
+          {!isLoading && queuedEnrichmentCount > 0 && (
+            <span style={{ fontSize: 10, color: "#475569" }}>
+              {queuedEnrichmentCount} paper{queuedEnrichmentCount === 1 ? "" : "s"} queued for async enrichment
+            </span>
+          )}
         </div>
 
         {/* Stats */}
