@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from worker.queue import paper_queue
 from services.openalex import search_papers
+from services.cloud_llm import generate_openalex_query
 from core.database import get_graph_for_papers, save_graph_to_db
 
 # Create a router we will plug into our main app
@@ -26,8 +27,12 @@ async def search_and_graph_papers(query: str):
     3. Queues DOI-based enrichment tasks for async background processing
     4. Returns graph data without waiting on LLM extraction
     """
-    print(f"🔎 Searching OpenAlex for query: '{query}'")
-    papers = await search_papers(query, max_results=10)
+    print(f"🔎 Generating OpenAlex query for: '{query}'")
+    openalex_query = await generate_openalex_query(query)
+    if not openalex_query.strip():
+        openalex_query = query.strip()
+    print(f"📚 Searching OpenAlex for: '{openalex_query}'")
+    papers = await search_papers(openalex_query, max_results=10)
 
     target_paper_ids = [p["id"] for p in papers]
 
@@ -55,7 +60,7 @@ async def search_and_graph_papers(query: str):
     graph_data = await get_graph_for_papers(target_paper_ids)
 
     return {
-        "search_query": query,
+        "search_query": openalex_query,
         "results_found": len(papers),
         "enrichment_queued": queued_count,
         "graph": graph_data
