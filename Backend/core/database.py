@@ -1,3 +1,4 @@
+import json
 import re
 from typing import Any, Optional
 from neo4j import AsyncGraphDatabase
@@ -50,6 +51,37 @@ def generate_node_id(prefix: str, label: str) -> str:
     return f"{prefix}_{clean_label}"
 
 
+def _to_neo4j_property_value(value: Any) -> Any:
+    """
+    Converts arbitrary JSON-like values into Neo4j-compatible property values.
+    Neo4j supports only primitives or arrays of primitives for properties.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, list):
+        if all(isinstance(item, (str, int, float, bool)) and item is not None for item in value):
+            return value
+        return json.dumps(value, ensure_ascii=False)
+
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+
+    return str(value)
+
+
+def _sanitize_metadata_for_neo4j(metadata: dict[str, Any]) -> dict[str, Any]:
+    sanitized: dict[str, Any] = {}
+    for key, value in metadata.items():
+        sanitized_value = _to_neo4j_property_value(value)
+        if sanitized_value is not None:
+            sanitized[key] = sanitized_value
+    return sanitized
+
+
 # ---------------------------------------------------------------------------
 # DATABASE OPERATIONS
 # ---------------------------------------------------------------------------
@@ -98,6 +130,7 @@ async def save_graph_to_db(paper_id: str, entities: dict[str, Any], paper_metada
         
     if paper_metadata is None:
         paper_metadata = {}
+    safe_paper_metadata = _sanitize_metadata_for_neo4j(paper_metadata)
 
     # Format models with our stable IDs
     models_data = []
@@ -120,7 +153,7 @@ async def save_graph_to_db(paper_id: str, entities: dict[str, Any], paper_metada
             MERGE (p:Paper {id: $paper_id})
             SET p += $metadata,
                 p.type = 'paper'
-        """, paper_id=paper_id, metadata=paper_metadata)
+        """, paper_id=paper_id, metadata=safe_paper_metadata)
 
         # 2. Bulk insert Models & Relationships using UNWIND
         if models_data:
