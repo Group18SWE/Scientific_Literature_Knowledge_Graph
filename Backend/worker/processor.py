@@ -37,18 +37,27 @@ async def background_worker():
     while True:
         try:
             task = await paper_queue.get()
+        except asyncio.CancelledError:
+            print("🛑 Background worker gracefully shutting down...")
+            break
 
+        paper_id = None
+        completion_future = None
+        completion_status = "failed"
+
+        try:
             if isinstance(task, dict):
                 paper_id = task.get("paper_id")
                 doi = task.get("doi")
                 paper_metadata = task.get("paper_metadata", {})
+                completion_future = task.get("completion_future")
             else:
                 paper_id = task
                 doi = None
                 paper_metadata = {}
 
             if not paper_id:
-                paper_queue.task_done()
+                completion_status = "missing_paper_id"
                 continue
 
             print(f"⚙️ Worker picked up paper: {paper_id}")
@@ -56,30 +65,30 @@ async def background_worker():
             is_enriched = await check_if_paper_enriched(paper_id)
             if is_enriched:
                 print(f"🟢 Paper {paper_id} already enriched. Skipping.")
-                paper_queue.task_done()
+                completion_status = "already_enriched"
                 continue
 
             if not doi:
                 print(f"⚠️ Missing DOI for {paper_id}; cannot resolve CORE ID.")
-                paper_queue.task_done()
+                completion_status = "missing_doi"
                 continue
 
             core_id = await resolve_core_id_from_doi(doi)
             if not core_id:
                 print(f"⚠️ No CORE ID found for DOI {doi}.")
-                paper_queue.task_done()
+                completion_status = "core_id_not_found"
                 continue
 
             core_work = await fetch_core_work(core_id)
             if not core_work:
                 print(f"⚠️ CORE work lookup failed for ID {core_id}.")
-                paper_queue.task_done()
+                completion_status = "core_work_not_found"
                 continue
 
             formatted_text = _format_text_for_extraction(core_work)
             if not formatted_text:
                 print(f"⚠️ Empty formatted full-text for {paper_id}.")
-                paper_queue.task_done()
+                completion_status = "empty_formatted_text"
                 continue
 
             entities = await extract_entities(formatted_text)
@@ -91,10 +100,16 @@ async def background_worker():
             await save_graph_to_db(paper_id, entities, paper_metadata=paper_metadata)
             print(f"💾 Successfully saved {paper_id} enrichment to Neo4j!")
             print(f"✅ Finished processing task for: {paper_id}")
-            paper_queue.task_done()
-
-        except asyncio.CancelledError:
-            print("🛑 Background worker gracefully shutting down...")
-            break
+            completion_status = "success"
         except Exception as e:
             print(f"⚠️ Error processing paper in queue: {e}")
+            completion_status = "error"
+        finally:
+            if completion_future is not None and not completion_future.done():
+                completion_future.set_result(
+                    {
+                        "paper_id": paper_id,
+                        "status": completion_status,
+                    }
+                )
+            paper_queue.task_done()

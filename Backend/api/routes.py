@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+import asyncio
 from worker.queue import paper_queue
 from services.openalex import search_papers
 from services.cloud_llm import generate_openalex_query
@@ -25,7 +26,8 @@ async def search_and_graph_papers(query: str):
     1. Searches OpenAlex for fast OA metadata
     2. Saves Paper nodes immediately for frontend rendering
     3. Queues DOI-based enrichment tasks for async background processing
-    4. Returns graph data without waiting on LLM extraction
+    4. Waits for all queued enrichment tasks for this request to finish
+    5. Returns graph data after enrichment pass completes
     """
     print(f"🔎 Generating OpenAlex query for: '{query}'")
     openalex_query = await generate_openalex_query(query)
@@ -35,6 +37,8 @@ async def search_and_graph_papers(query: str):
     papers = await search_papers(openalex_query, max_results=10)
 
     target_paper_ids = [p["id"] for p in papers]
+    loop = asyncio.get_running_loop()
+    completion_futures: list[asyncio.Future] = []
 
     queued_count = 0
     for paper in papers:
@@ -46,16 +50,22 @@ async def search_and_graph_papers(query: str):
 
         doi = paper.get("doi")
         if doi:
+            completion_future = loop.create_future()
+            completion_futures.append(completion_future)
             await paper_queue.put(
                 {
                     "paper_id": paper["id"],
                     "doi": doi,
                     "paper_metadata": paper.get("metadata", {}),
+                    "completion_future": completion_future,
                 }
             )
             queued_count += 1
 
     print(f"⚡ Queued {queued_count} papers for asynchronous enrichment.")
+    if completion_futures:
+        await asyncio.gather(*completion_futures, return_exceptions=True)
+        print(f"✅ Completed enrichment processing for {queued_count} queued papers.")
 
     graph_data = await get_graph_for_papers(target_paper_ids)
 
