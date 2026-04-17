@@ -10,7 +10,7 @@ router = APIRouter()
 
 @router.get("/")
 async def root():
-    return {"message": "Scientific Literature Grapher API is running!"}
+    return {"message": "ArXiv Grapher API is running!"}
 
 @router.post("/test-queue/{paper_id}")
 async def add_to_queue(paper_id: str):
@@ -21,12 +21,13 @@ async def add_to_queue(paper_id: str):
     return {"message": f"Paper '{paper_id}' added to the queue."}
 
 @router.post("/test-translate/")
-async def test_translation(query: str):
+async def test_search_query(query: str):
     """
-    A temporary endpoint to inspect the search query passed to Semantic Scholar.
+    Backward-compatible test endpoint that echoes the exact Semantic Scholar query.
     """
     return {
         "user_input": query, 
+        "arxiv_query": query,
         "semantic_scholar_query": query
     }
 
