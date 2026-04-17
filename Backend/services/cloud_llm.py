@@ -79,6 +79,51 @@ async def generate_arxiv_query(user_input: str) -> str:
         logger.error(f"⚠️ Error communicating with Gemini for query translation: {e}")
         return "ERROR"
 
+async def generate_semantic_scholar_query(user_input: str) -> str:
+    """
+    Translates a natural language user query into an optimized Semantic Scholar
+    keyword query string.
+    """
+    prompt = f"""
+    You are an expert academic research assistant. Convert the following user query
+    into an optimized Semantic Scholar keyword search query.
+
+    CRITICAL RULES FOR SEMANTIC SCHOLAR QUERY:
+    1. OUTPUT KEYWORDS ONLY: Return a compact keyword phrase, not boolean operators.
+    2. STRIP FILLER: Remove conversational words like "latest", "recent", "papers",
+       "show me", "about", "via", "using".
+    3. KEEP CORE TERMS: Preserve the important research concepts and named entities.
+    4. INCLUDE HIGH-VALUE SYNONYMS: If useful, include one short synonym variant.
+    5. Return ONLY the query string without markdown or extra commentary.
+
+    Examples:
+    User: "latest research papers on handwriting detection via image processing"
+    Output: handwriting detection image processing computer vision
+
+    User: "Show me recent papers about graph neural networks"
+    Output: graph neural networks GNN
+
+    User: "LLMs used for healthcare and medicine"
+    Output: large language models healthcare medicine clinical
+
+    User: "{user_input}"
+    Output:
+    """
+
+    try:
+        response = await client.aio.models.generate_content(
+            model='gemini-3.1-flash-lite-preview',
+            contents=prompt
+        )
+        response_text = response.text
+        if response_text is None:
+            raise Exception("Empty response from Gemini")
+        return response_text.strip()
+
+    except Exception as e:
+        logger.error(f"⚠️ Error communicating with Gemini for Semantic Scholar query translation: {e}")
+        return "ERROR"
+
 async def extract_entities(parsed_text: str) -> dict:
     """
     Passes the raw paper text to the GenAI API to extract models and datasets.

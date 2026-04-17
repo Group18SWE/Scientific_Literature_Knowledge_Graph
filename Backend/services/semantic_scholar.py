@@ -53,7 +53,7 @@ async def search_papers(search_query: str, max_results: int = 3):
         "fields": ",".join(SEMANTIC_SCHOLAR_FIELDS),
     }
     headers = {
-        "User-Agent": "ArXivGrapher/1.0"
+        "User-Agent": "ScientificLiteratureKG/1.0"
     }
     if settings.SEMANTIC_SCHOLAR_API_KEY:
         headers["x-api-key"] = settings.SEMANTIC_SCHOLAR_API_KEY

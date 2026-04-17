@@ -2,6 +2,7 @@ import asyncio
 from fastapi import APIRouter
 from worker.queue import paper_queue
 from services.semantic_scholar import search_papers
+from services.cloud_llm import generate_semantic_scholar_query
 from services.process_paper import process_single_paper
 from core.database import get_graph_for_papers
 
@@ -21,14 +22,17 @@ async def add_to_queue(paper_id: str):
     return {"message": f"Paper '{paper_id}' added to the queue."}
 
 @router.post("/test-translate/")
-async def test_search_query(query: str):
+async def test_translation(query: str):
     """
-    Backward-compatible test endpoint that echoes the exact Semantic Scholar query.
+    Test endpoint that translates natural-language input to a Semantic Scholar query.
+    Includes legacy key names for backward compatibility.
     """
+    semantic_scholar_query = await generate_semantic_scholar_query(query)
     return {
         "user_input": query, 
-        "arxiv_query": query,
-        "semantic_scholar_query": query
+        # TODO: remove legacy alias after clients migrate to semantic_scholar_query.
+        "arxiv_query": semantic_scholar_query,
+        "semantic_scholar_query": semantic_scholar_query
     }
 
 @router.post("/search/")
@@ -40,8 +44,13 @@ async def search_and_graph_papers(query: str):
     4. Queries Neo4j for the final graph
     5. Returns exact Frontend JSON
     """
-    print(f"📚 Fetching top papers from Semantic Scholar for: {query}")
-    papers = await search_papers(query, max_results=10)
+    print(f"🔎 Translating user query for Semantic Scholar: '{query}'")
+    semantic_scholar_query = await generate_semantic_scholar_query(query)
+    if semantic_scholar_query == "ERROR":
+        semantic_scholar_query = query
+
+    print(f"📚 Fetching top papers from Semantic Scholar for: {semantic_scholar_query}")
+    papers = await search_papers(semantic_scholar_query, max_results=10)
     
     # Extract IDs for our final query
     target_paper_ids = [p["id"] for p in papers]
@@ -58,7 +67,7 @@ async def search_and_graph_papers(query: str):
     graph_data = await get_graph_for_papers(target_paper_ids)
     
     return {
-        "search_query": query,
+        "search_query": semantic_scholar_query,
         "results_found": len(papers),
         "graph": graph_data  # <--- Here is the exact {nodes: [], edges: []} for React!
     }
