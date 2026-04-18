@@ -21,23 +21,42 @@ export default function Navbar({ darkMode, onToggleDark }) {
       zIndex: 50,
       boxShadow: 'var(--shadow-sm)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-          background: 'linear-gradient(135deg, #5b9df9 0%, #10b981 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 14, fontWeight: 700, color: '#fff',
-          boxShadow: '0 2px 10px rgba(91,157,249,0.35)',
-        }}>R</div>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-primary)', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
-            ResearchGraph
-          </div>
-          <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase', lineHeight: 1 }}>
-            Knowledge Explorer
-          </div>
-        </div>
-      </div>
+      {<div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+ <div style={{
+  width: 32,
+  height: 32,
+  borderRadius: 8,
+  background: '#0f172a',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: 16
+}}>
+  🌐
+</div>
+
+  <div>
+    <div style={{
+      fontWeight: 600,
+      fontSize: 13.5,
+      color: 'var(--text-primary)',
+      letterSpacing: '-0.01em',
+      lineHeight: 1.2
+    }}>
+      ResearchGraph
+    </div>
+
+    <div style={{
+      fontSize: 9,
+      color: 'var(--text-muted)',
+      letterSpacing: '0.12em',
+      textTransform: 'uppercase',
+      lineHeight: 1
+    }}>
+      Knowledge Explorer
+    </div>
+  </div>
+</div>}
 
       <div style={{ display: 'flex', gap: 3 }}>
         {NAV_LINKS.map(({ path, label }) => {
