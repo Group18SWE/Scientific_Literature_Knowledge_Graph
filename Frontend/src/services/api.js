@@ -2,6 +2,22 @@ import axios from 'axios';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
+const CURRENT_YEAR = new Date().getFullYear();
+
+export function computeMetrics(node) {
+  const m = node.metadata || {};
+  const citations = m.citationCount || 0;
+  const influential = m.influentialCitationCount || 0;
+  const year = m.year || CURRENT_YEAR;
+  const age = Math.max(CURRENT_YEAR - year + 1, 1);
+  return {
+    impactScore: citations + 2 * influential,
+    citationDensity: Math.round(citations / age),
+    recencyScore: CURRENT_YEAR - year,
+    age,
+  };
+}
+
 export const DUMMY_DATA = {
   nodes: [
     {
@@ -11,8 +27,10 @@ export const DUMMY_DATA = {
       metadata: {
         title: 'Attention Is All You Need',
         authors: [
-          { name: 'Ashish Vaswani' }, { name: 'Noam M. Shazeer' },
-          { name: 'Niki Parmar' }, { name: 'Jakob Uszkoreit' },
+          { authorId: 'a1', name: 'Ashish Vaswani' },
+          { authorId: 'a2', name: 'Noam M. Shazeer' },
+          { authorId: 'a3', name: 'Niki Parmar' },
+          { authorId: 'a4', name: 'Jakob Uszkoreit' },
         ],
         year: 2017,
         publicationDate: '2017-06-12',
@@ -36,8 +54,10 @@ export const DUMMY_DATA = {
       metadata: {
         title: 'BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding',
         authors: [
-          { name: 'Jacob Devlin' }, { name: 'Ming-Wei Chang' },
-          { name: 'Kenton Lee' }, { name: 'Kristina Toutanova' },
+          { authorId: 'a5', name: 'Jacob Devlin' },
+          { authorId: 'a6', name: 'Ming-Wei Chang' },
+          { authorId: 'a7', name: 'Kenton Lee' },
+          { authorId: 'a8', name: 'Kristina Toutanova' },
         ],
         year: 2019,
         publicationDate: '2019-06-02',
@@ -61,7 +81,9 @@ export const DUMMY_DATA = {
       metadata: {
         title: 'Language Models are Few-Shot Learners',
         authors: [
-          { name: 'Tom B. Brown' }, { name: 'Benjamin Mann' }, { name: 'Nick Ryder' },
+          { authorId: 'a9', name: 'Tom B. Brown' },
+          { authorId: 'a10', name: 'Benjamin Mann' },
+          { authorId: 'a11', name: 'Nick Ryder' },
         ],
         year: 2020,
         publicationDate: '2020-05-28',
@@ -85,7 +107,9 @@ export const DUMMY_DATA = {
       metadata: {
         title: 'An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale',
         authors: [
-          { name: 'Alexey Dosovitskiy' }, { name: 'Lucas Beyer' }, { name: 'Alexander Kolesnikov' },
+          { authorId: 'a12', name: 'Alexey Dosovitskiy' },
+          { authorId: 'a13', name: 'Lucas Beyer' },
+          { authorId: 'a14', name: 'Alexander Kolesnikov' },
         ],
         year: 2021,
         publicationDate: '2021-06-03',
@@ -109,7 +133,9 @@ export const DUMMY_DATA = {
       metadata: {
         title: 'Learning Transferable Visual Models From Natural Language Supervision',
         authors: [
-          { name: 'Alec Radford' }, { name: 'Jong Wook Kim' }, { name: 'Chris Hallacy' },
+          { authorId: 'a15', name: 'Alec Radford' },
+          { authorId: 'a16', name: 'Jong Wook Kim' },
+          { authorId: 'a17', name: 'Chris Hallacy' },
         ],
         year: 2021,
         publicationDate: '2021-02-26',
@@ -133,7 +159,9 @@ export const DUMMY_DATA = {
       metadata: {
         title: 'LLaMA: Open and Efficient Foundation Language Models',
         authors: [
-          { name: 'Hugo Touvron' }, { name: 'Thibaut Lavril' }, { name: 'Gautier Izacard' },
+          { authorId: 'a18', name: 'Hugo Touvron' },
+          { authorId: 'a19', name: 'Thibaut Lavril' },
+          { authorId: 'a20', name: 'Gautier Izacard' },
         ],
         year: 2023,
         publicationDate: '2023-02-27',
@@ -156,7 +184,11 @@ export const DUMMY_DATA = {
       label: 'Denoising Diffusion',
       metadata: {
         title: 'Denoising Diffusion Probabilistic Models',
-        authors: [{ name: 'Jonathan Ho' }, { name: 'Ajay Jain' }, { name: 'Pieter Abbeel' }],
+        authors: [
+          { authorId: 'a21', name: 'Jonathan Ho' },
+          { authorId: 'a22', name: 'Ajay Jain' },
+          { authorId: 'a23', name: 'Pieter Abbeel' },
+        ],
         year: 2020,
         publicationDate: '2020-06-19',
         venue: 'NeurIPS',
@@ -170,6 +202,75 @@ export const DUMMY_DATA = {
         isOpenAccess: true,
         openAccessPdf: { url: 'https://arxiv.org/pdf/2006.11239.pdf' },
         arxivId: '2006.11239',
+      },
+    },
+    {
+      id: 'paper_resnet',
+      type: 'paper',
+      label: 'Deep Residual Learning',
+      metadata: {
+        title: 'Deep Residual Learning for Image Recognition',
+        authors: [
+          { authorId: 'a24', name: 'Kaiming He' },
+          { authorId: 'a25', name: 'Xiangyu Zhang' },
+          { authorId: 'a26', name: 'Shaoqing Ren' },
+          { authorId: 'a27', name: 'Jian Sun' },
+        ],
+        year: 2016,
+        publicationDate: '2016-06-27',
+        venue: 'CVPR',
+        publicationVenue: { name: 'CVPR', type: 'conference' },
+        citationCount: 120000,
+        influentialCitationCount: 18000,
+        referenceCount: 39,
+        abstract: 'We present a residual learning framework to ease the training of networks that are substantially deeper than those used previously.',
+        tldr: { text: 'Residual connections enable training very deep networks (152 layers), winning ILSVRC 2015 image classification by a large margin.' },
+        fieldsOfStudy: ['Computer Science', 'Computer Vision'],
+        isOpenAccess: true,
+        openAccessPdf: { url: 'https://arxiv.org/pdf/1512.03385.pdf' },
+        arxivId: '1512.03385',
+      },
+    },
+    {
+      id: 'author_vaswani',
+      type: 'author',
+      label: 'Ashish Vaswani',
+      metadata: {
+        authorId: 'a1',
+        name: 'Ashish Vaswani',
+        paperCount: 24,
+        citationCount: 95000,
+        hIndex: 18,
+        affiliations: ['Google Brain', 'Google Research'],
+        fieldsOfStudy: ['Machine Learning', 'NLP'],
+      },
+    },
+    {
+      id: 'author_devlin',
+      type: 'author',
+      label: 'Jacob Devlin',
+      metadata: {
+        authorId: 'a5',
+        name: 'Jacob Devlin',
+        paperCount: 18,
+        citationCount: 68000,
+        hIndex: 15,
+        affiliations: ['Google Research'],
+        fieldsOfStudy: ['NLP', 'Machine Learning'],
+      },
+    },
+    {
+      id: 'author_he',
+      type: 'author',
+      label: 'Kaiming He',
+      metadata: {
+        authorId: 'a24',
+        name: 'Kaiming He',
+        paperCount: 32,
+        citationCount: 145000,
+        hIndex: 22,
+        affiliations: ['Meta AI', 'Microsoft Research'],
+        fieldsOfStudy: ['Computer Vision', 'Deep Learning'],
       },
     },
     {
@@ -207,6 +308,12 @@ export const DUMMY_DATA = {
       type: 'model',
       label: 'U-Net',
       metadata: { task: 'Image Generation / Segmentation', framework: 'PyTorch', paramCount: '32M' },
+    },
+    {
+      id: 'model_resnet50',
+      type: 'model',
+      label: 'ResNet-50',
+      metadata: { task: 'Image Classification', framework: 'PyTorch / TensorFlow', paramCount: '25M' },
     },
     {
       id: 'ds_wmt',
@@ -280,8 +387,18 @@ export const DUMMY_DATA = {
     { id: 'e20', source: 'paper_diffusion', target: 'ds_cifar',          type: 'uses_dataset' },
     { id: 'e21', source: 'paper_diffusion', target: 'ds_imagenet',       type: 'uses_dataset' },
     { id: 'e22', source: 'paper_vit',       target: 'ds_cifar',          type: 'uses_dataset' },
+    { id: 'e23', source: 'paper_resnet',    target: 'model_resnet50',    type: 'uses_model' },
+    { id: 'e24', source: 'paper_resnet',    target: 'ds_imagenet',       type: 'uses_dataset' },
+    { id: 'e25', source: 'paper_bert',      target: 'paper_attention',   type: 'cites' },
+    { id: 'e26', source: 'paper_vit',       target: 'paper_attention',   type: 'cites' },
+    { id: 'e27', source: 'paper_llama',     target: 'paper_attention',   type: 'cites' },
+    { id: 'e28', source: 'paper_attention', target: 'author_vaswani',    type: 'written_by' },
+    { id: 'e29', source: 'paper_bert',      target: 'author_devlin',     type: 'written_by' },
+    { id: 'e30', source: 'paper_resnet',    target: 'author_he',         type: 'written_by' },
+    { id: 'e31', source: 'paper_clip',      target: 'model_vit_model',   type: 'uses_model' },
+    { id: 'e32', source: 'paper_gpt3',      target: 'paper_bert',        type: 'cites' },
   ],
-  meta: { total_results: 21 },
+  meta: { total_results: 25 },
 };
 
 export function normalizeGraphData(graph) {
@@ -332,4 +449,48 @@ export async function searchGraph({ query, yearFrom, yearTo, sortBy, order } = {
     { timeout: 30000 }
   );
   return response.data;
+}
+
+export function getSimilarPapers(paperId, graphData) {
+  const myConnections = new Set(
+    graphData.edges
+      .filter((e) => e.source === paperId || e.target === paperId)
+      .map((e) => (e.source === paperId ? e.target : e.source))
+  );
+
+  const scores = {};
+  graphData.nodes
+    .filter((n) => n.type === 'paper' && n.id !== paperId)
+    .forEach((other) => {
+      const otherConnections = new Set(
+        graphData.edges
+          .filter((e) => e.source === other.id || e.target === other.id)
+          .map((e) => (e.source === other.id ? e.target : e.source))
+      );
+      const shared = [...myConnections].filter((id) => otherConnections.has(id)).length;
+      if (shared > 0) scores[other.id] = shared;
+    });
+
+  return Object.entries(scores)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([id, score]) => ({ node: graphData.nodes.find((n) => n.id === id), score }))
+    .filter((r) => r.node);
+}
+
+export function exportCSV(graphData) {
+  const rows = [['id', 'type', 'label', 'year', 'citationCount', 'influentialCitationCount', 'venue', 'arxivId']];
+  graphData.nodes.forEach((n) => {
+    const m = n.metadata || {};
+    rows.push([
+      n.id, n.type,
+      `"${(n.label || '').replace(/"/g, '""')}"`,
+      m.year || '',
+      m.citationCount || '',
+      m.influentialCitationCount || '',
+      `"${(m.venue || '').replace(/"/g, '""')}"`,
+      m.arxivId || '',
+    ]);
+  });
+  return rows.map((r) => r.join(',')).join('\n');
 }

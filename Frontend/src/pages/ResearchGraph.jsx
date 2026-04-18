@@ -1,33 +1,35 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import Graph, { getSubgraph } from '../components/Graph';
 import SidebarFilters from '../components/SidebarFilters';
 import SortingControls from '../components/SortingControls';
-import NodeDetailsPanel from '../components/NodeDetailsPanel';
+import NodeDetailsPanel, { NodeHoverPreview } from '../components/NodeDetailsPanel';
 import Legend from '../components/Legend';
-import { DUMMY_DATA, normalizeGraphData, searchGraph } from '../services/api';
+import { DUMMY_DATA, normalizeGraphData, searchGraph, exportCSV, computeMetrics } from '../services/api';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 const DEFAULT_FILTERS = {
   search: '',
-  paper: true,
-  model: true,
-  dataset: true,
-  yearMin: 2017,
-  yearMax: 2024,
+  paper: true, model: true, dataset: true, author: true,
+  yearMin: 2015, yearMax: CURRENT_YEAR,
   minCitations: 0,
-  sortBy: 'citations',
-  sortOrder: 'desc',
-  maxNodes: 100,
+  openAccess: true, closedAccess: true,
+  showModelEdges: true, showDatasetEdges: true, showCiteEdges: true, showAuthorEdges: true,
+  venues: [], fields: [], authors: [],
+  sortBy: 'citations', sortOrder: 'desc', maxNodes: 100,
 };
 
 export default function ResearchGraph({ darkMode }) {
-  const [rawData, setRawData] = useState(DUMMY_DATA);
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [rawData, setRawData]         = useState(DUMMY_DATA);
+  const [filters, setFilters]         = useState(DEFAULT_FILTERS);
   const [selectedNode, setSelectedNode] = useState(null);
-  const [apiQuery, setApiQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [topK, setTopK] = useState(null);
-  const [graphKey, setGraphKey] = useState(0);
+  const [hoverInfo, setHoverInfo]     = useState(null);
+  const [apiQuery, setApiQuery]       = useState('');
+  const [isLoading, setIsLoading]     = useState(false);
+  const [error, setError]             = useState('');
+  const [topK, setTopK]               = useState(null);
+  const [graphKey, setGraphKey]       = useState(0);
+  const [bookmarks, setBookmarks]     = useState(new Set());
 
   const handleApiSearch = useCallback(async () => {
     const q = apiQuery.trim();
@@ -40,6 +42,7 @@ export default function ResearchGraph({ darkMode }) {
       if (normalized.nodes.length > 0) {
         setRawData(normalized);
         setSelectedNode(null);
+        setTopK(null);
       } else {
         setError('No results found. Showing demo data.');
       }
@@ -60,17 +63,48 @@ export default function ResearchGraph({ darkMode }) {
   }, [rawData]);
 
   const graphData = useMemo(() => {
-    const q = filters.search.toLowerCase();
+    const q = (filters.search || '').toLowerCase();
+    const selectedVenues  = new Set(filters.venues  || []);
+    const selectedFields  = new Set(filters.fields   || []);
+    const selectedAuthors = new Set(filters.authors  || []);
 
     let nodes = rawData.nodes.filter((n) => {
-      if (!filters[n.type]) return false;
-      if (q && !n.label.toLowerCase().includes(q) && !(n.metadata?.title || '').toLowerCase().includes(q)) return false;
-      if (n.type === 'paper' && n.metadata?.year != null) {
-        if (n.metadata.year < filters.yearMin || n.metadata.year > filters.yearMax) return false;
+      if (filters[n.type] === false) return false;
+
+      if (q) {
+        const titleMatch   = (n.label || '').toLowerCase().includes(q);
+        const titleMeta    = (n.metadata?.title || '').toLowerCase().includes(q);
+        const tldrMatch    = (n.metadata?.tldr?.text || '').toLowerCase().includes(q);
+        const abstractMatch = (n.metadata?.abstract || '').toLowerCase().includes(q);
+        if (!titleMatch && !titleMeta && !tldrMatch && !abstractMatch) return false;
       }
-      if (n.type === 'paper' && n.metadata?.citationCount != null) {
-        if (n.metadata.citationCount < filters.minCitations) return false;
+
+      if (n.type === 'paper') {
+        const year = n.metadata?.year;
+        if (year != null && (year < filters.yearMin || year > filters.yearMax)) return false;
+
+        const citations = n.metadata?.citationCount;
+        if (citations != null && citations < (filters.minCitations || 0)) return false;
+
+        if (filters.openAccess === false && n.metadata?.isOpenAccess === true) return false;
+        if (filters.closedAccess === false && n.metadata?.isOpenAccess === false) return false;
+
+        if (selectedVenues.size > 0) {
+          const venue = n.metadata?.publicationVenue?.name || n.metadata?.venue;
+          if (!venue || !selectedVenues.has(venue)) return false;
+        }
+
+        if (selectedFields.size > 0) {
+          const fields = n.metadata?.fieldsOfStudy || [];
+          if (!fields.some((f) => selectedFields.has(f))) return false;
+        }
+
+        if (selectedAuthors.size > 0) {
+          const authors = (n.metadata?.authors || []).map((a) => (typeof a === 'object' ? a.name : a));
+          if (!authors.some((a) => selectedAuthors.has(a))) return false;
+        }
       }
+
       return true;
     });
 
@@ -81,13 +115,15 @@ export default function ResearchGraph({ darkMode }) {
         .slice(0, topK);
       const paperIds = new Set(papers.map((p) => p.id));
       const nonPapers = nodes.filter((n) => n.type !== 'paper');
-      nodes = [...papers, ...nonPapers.filter((n) => {
-        const edges = rawData.edges.filter(
-          (e) => (e.source === n.id || e.target === n.id) &&
-                 (paperIds.has(e.source) || paperIds.has(e.target))
-        );
-        return edges.length > 0;
-      })];
+      nodes = [
+        ...papers,
+        ...nonPapers.filter((n) => {
+          return rawData.edges.some(
+            (e) => (e.source === n.id || e.target === n.id) &&
+                   (paperIds.has(e.source) || paperIds.has(e.target))
+          );
+        }),
+      ];
     }
 
     const { sortBy, sortOrder } = filters;
@@ -96,19 +132,29 @@ export default function ResearchGraph({ darkMode }) {
       if (sortBy === 'citations') {
         aVal = a.metadata?.citationCount || 0;
         bVal = b.metadata?.citationCount || 0;
+      } else if (sortBy === 'influential') {
+        aVal = a.metadata?.influentialCitationCount || 0;
+        bVal = b.metadata?.influentialCitationCount || 0;
       } else if (sortBy === 'year') {
         aVal = a.metadata?.year || 0;
         bVal = b.metadata?.year || 0;
       } else if (sortBy === 'degree') {
         aVal = degreeMap.get(a.id) || 0;
         bVal = degreeMap.get(b.id) || 0;
+      } else if (sortBy === 'impact') {
+        aVal = a.type === 'paper' ? computeMetrics(a).impactScore : 0;
+        bVal = b.type === 'paper' ? computeMetrics(b).impactScore : 0;
+      } else if (sortBy === 'alpha') {
+        return sortOrder === 'asc'
+          ? (a.label || '').localeCompare(b.label || '')
+          : (b.label || '').localeCompare(a.label || '');
       } else {
         return 0;
       }
       return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
     });
 
-    nodes = nodes.slice(0, filters.maxNodes);
+    nodes = nodes.slice(0, filters.maxNodes || 100);
 
     const visibleIds = new Set(nodes.map((n) => n.id));
     const edges = rawData.edges.filter(
@@ -124,20 +170,28 @@ export default function ResearchGraph({ darkMode }) {
     return neighborIds;
   }, [selectedNode, graphData.edges]);
 
-  const graphMeta = {
+  const graphMeta = useMemo(() => ({
     paper:   graphData.nodes.filter((n) => n.type === 'paper').length,
     model:   graphData.nodes.filter((n) => n.type === 'model').length,
     dataset: graphData.nodes.filter((n) => n.type === 'dataset').length,
+    author:  graphData.nodes.filter((n) => n.type === 'author').length,
     total:   graphData.nodes.length,
-  };
+  }), [graphData.nodes]);
 
   const handleExport = useCallback(() => {
     const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'literature-graph.json';
-    a.click();
+    a.href = url; a.download = 'literature-graph.json'; a.click();
+    URL.revokeObjectURL(url);
+  }, [graphData]);
+
+  const handleExportCSV = useCallback(() => {
+    const csv = exportCSV(graphData);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'literature-graph.csv'; a.click();
     URL.revokeObjectURL(url);
   }, [graphData]);
 
@@ -150,86 +204,104 @@ export default function ResearchGraph({ darkMode }) {
     setGraphKey((k) => k + 1);
   }, []);
 
-  const bg = darkMode ? '#050a14' : '#f1f5f9';
-  const headerBg = darkMode ? '#060d1a' : '#ffffff';
-  const headerBorder = darkMode ? '#0f1f36' : '#e2e8f0';
-  const inputBg = darkMode ? '#0a1628' : '#ffffff';
-  const inputBorder = darkMode ? '#1e3a5f' : '#e2e8f0';
-  const textColor = darkMode ? '#94a3b8' : '#64748b';
+  const handleBookmark = useCallback((nodeId) => {
+    setBookmarks((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId); else next.add(nodeId);
+      return next;
+    });
+  }, []);
+
+  const NODE_COLORS = { paper: '#5b9df9', model: '#f59e0b', dataset: '#10b981', author: '#fb923c' };
 
   return (
     <div
-      className="flex flex-col"
-      style={{ height: 'calc(100vh - 49px)', background: bg, overflow: 'hidden' }}
+      style={{
+        display: 'flex', flexDirection: 'column',
+        height: 'calc(100vh - 52px)',
+        background: 'var(--bg-base)', overflow: 'hidden',
+      }}
     >
-      <div
-        className="flex items-center gap-3 px-5 py-2.5 shrink-0"
-        style={{ background: headerBg, borderBottom: `1px solid ${headerBorder}` }}
-      >
-        <div className="relative flex-1 max-w-md">
-          <span
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs"
-            style={{ color: textColor }}
-          >
-            ⌕
-          </span>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
+        background: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--border-default)',
+        flexShrink: 0,
+      }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 440 }}>
+          <span style={{
+            position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)',
+            color: 'var(--text-muted)', fontSize: 13, pointerEvents: 'none',
+          }}>⌕</span>
           <input
             value={apiQuery}
             onChange={(e) => setApiQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleApiSearch()}
-            placeholder="Search papers via backend API..."
-            className="w-full rounded-lg text-xs pl-7 pr-3 py-1.5 outline-none"
+            placeholder="Search papers via Semantic Scholar..."
             style={{
-              background: inputBg,
-              border: `1px solid ${inputBorder}`,
-              color: textColor,
-              fontFamily: 'var(--font-mono)',
+              width: '100%', background: 'var(--bg-input)',
+              border: '1px solid var(--border-default)',
+              color: 'var(--text-primary)',
+              borderRadius: 8, padding: '6px 10px 6px 28px',
+              fontSize: 12.5, fontFamily: 'var(--font-mono)',
+              outline: 'none', transition: 'border-color 0.15s',
             }}
+            onFocus={(e) => { e.target.style.borderColor = 'var(--border-focus)'; }}
+            onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; }}
           />
         </div>
+
         <button
           onClick={handleApiSearch}
           disabled={isLoading || !apiQuery.trim()}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
-          style={{
-            background: isLoading ? inputBg : '#0ea5e9',
-            border: `1px solid ${isLoading ? inputBorder : '#0ea5e9'}`,
-            color: isLoading ? textColor : '#ffffff',
-            cursor: isLoading || !apiQuery.trim() ? 'not-allowed' : 'pointer',
-            opacity: !apiQuery.trim() ? 0.5 : 1,
-          }}
+          className="btn btn-primary"
+          style={{ flexShrink: 0 }}
         >
           {isLoading ? (
             <>
-              <span className="w-3 h-3 rounded-full border-2 border-transparent border-t-current animate-spin-slow inline-block" />
+              <span className="animate-spin-slow" style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%' }} />
               Searching
             </>
           ) : 'Search'}
         </button>
 
-        <div className="flex items-center gap-3 ml-2 text-xs" style={{ color: textColor }}>
-          {['paper', 'model', 'dataset'].map((t) => {
-            const colors = { paper: '#38bdf8', model: '#f59e0b', dataset: '#34d399' };
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 4 }}>
+          {Object.entries(NODE_COLORS).map(([t, c]) => {
+            const count = graphMeta[t];
+            if (!count) return null;
             return (
-              <span key={t} className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: colors[t] }} />
-                {graphMeta[t]} {t}s
+              <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: c, flexShrink: 0, boxShadow: `0 0 5px ${c}80` }} />
+                <span style={{ color: c, fontWeight: 600 }}>{count}</span> {t}s
               </span>
             );
           })}
         </div>
 
+        {bookmarks.size > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '3px 10px', borderRadius: 6,
+            background: 'var(--glow-amber)',
+            border: '1px solid rgba(245,158,11,0.3)',
+            fontSize: 11.5, color: 'var(--accent-amber)',
+          }}>
+            ☆ {bookmarks.size} bookmark{bookmarks.size !== 1 ? 's' : ''}
+          </div>
+        )}
+
         {error && (
-          <div
-            className="text-xs px-3 py-1 rounded-lg"
-            style={{ background: '#ef444420', color: '#ef4444', border: '1px solid #ef444440' }}
-          >
+          <div style={{
+            padding: '4px 10px', borderRadius: 6, fontSize: 11.5,
+            background: 'var(--glow-red)', border: '1px solid rgba(248,113,113,0.3)',
+            color: 'var(--accent-red)',
+          }}>
             {error}
           </div>
         )}
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <SidebarFilters
           filters={filters}
           onFiltersChange={setFilters}
@@ -237,25 +309,17 @@ export default function ResearchGraph({ darkMode }) {
           darkMode={darkMode}
         />
 
-        <div className="flex-1 relative overflow-hidden graph-grid">
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }} className="graph-grid">
           {graphData.nodes.length === 0 ? (
-            <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-              style={{ color: darkMode ? '#1e3a5f' : '#94a3b8' }}
-            >
-              <div className="text-4xl">⬡</div>
-              <div className="text-sm">No nodes match the current filters</div>
-              <button
-                onClick={handleResetGraph}
-                className="text-xs px-4 py-2 rounded-lg transition-all"
-                style={{
-                  background: inputBg,
-                  border: `1px solid ${inputBorder}`,
-                  color: textColor,
-                  cursor: 'pointer',
-                }}
-              >
-                Reset Filters
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 12,
+              color: 'var(--text-faint)',
+            }}>
+              <div style={{ fontSize: 40 }}>⬡</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No nodes match the current filters</div>
+              <button className="btn btn-ghost" onClick={handleResetGraph}>
+                ↺ Reset Filters
               </button>
             </div>
           ) : (
@@ -264,44 +328,48 @@ export default function ResearchGraph({ darkMode }) {
               graphData={graphData}
               selectedNode={selectedNode}
               onSelectNode={setSelectedNode}
+              onHoverNode={setHoverInfo}
               darkMode={darkMode}
+              filters={filters}
             />
           )}
 
-          <div className="absolute bottom-4 left-4">
-            <Legend darkMode={darkMode} />
+          <div style={{ position: 'absolute', bottom: 14, left: 14 }}>
+            <Legend />
           </div>
 
           {topK !== null && (
-            <div
-              className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-xs flex items-center gap-2"
-              style={{
-                background: darkMode ? '#0a1628' : '#ffffff',
-                border: `1px solid ${darkMode ? '#1e3a5f' : '#e2e8f0'}`,
-                color: '#f59e0b',
-              }}
-            >
+            <div style={{
+              position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '5px 12px', borderRadius: 999,
+              background: 'var(--bg-surface)',
+              border: '1px solid rgba(245,158,11,0.35)',
+              fontSize: 11.5, color: 'var(--accent-amber)',
+              boxShadow: 'var(--shadow-md)',
+            }}>
               <span>Top {topK} most cited papers</span>
               <button
                 onClick={() => setTopK(null)}
-                className="ml-1"
-                style={{ background: 'none', border: 'none', color: textColor, cursor: 'pointer', fontSize: 14 }}
-              >
-                ×
-              </button>
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 0 }}
+              >×</button>
             </div>
           )}
+
+          {hoverInfo && <NodeHoverPreview hoverInfo={hoverInfo} />}
         </div>
 
         <SortingControls
           filters={filters}
           onFiltersChange={setFilters}
           graphData={graphData}
-          darkMode={darkMode}
           onExport={handleExport}
+          onExportCSV={handleExportCSV}
           onTopK={setTopK}
           topK={topK}
           onResetGraph={handleResetGraph}
+          bookmarkCount={bookmarks.size}
+          onClearBookmarks={() => setBookmarks(new Set())}
         />
 
         {selectedNode && (
@@ -311,6 +379,8 @@ export default function ResearchGraph({ darkMode }) {
             graphData={graphData}
             onClose={() => setSelectedNode(null)}
             onSelectNode={setSelectedNode}
+            onBookmark={handleBookmark}
+            bookmarks={bookmarks}
             darkMode={darkMode}
           />
         )}

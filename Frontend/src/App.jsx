@@ -12,15 +12,16 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('darkMode', String(darkMode));
-    document.documentElement.style.background = darkMode ? '#050a14' : '#f8fafc';
+    if (darkMode) {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
   }, [darkMode]);
 
   return (
     <BrowserRouter>
-      <div
-        className="flex flex-col min-h-screen"
-        style={{ background: darkMode ? '#050a14' : '#f8fafc' }}
-      >
+      <div className="flex flex-col min-h-screen" style={{ background: 'var(--bg-base)' }}>
         <Navbar darkMode={darkMode} onToggleDark={() => setDarkMode((d) => !d)} />
         <Routes>
           <Route path="/" element={<Landing darkMode={darkMode} />} />

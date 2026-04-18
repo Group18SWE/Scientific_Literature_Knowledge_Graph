@@ -1,81 +1,113 @@
-export default function SortingControls({ filters, onFiltersChange, graphData, onExport, onTopK, topK, onResetGraph, onExportCSV, onLayoutChange, layout }) {
-  const set = (key, val) => onFiltersChange({ ...filters, [key]: val });
+import { computeMetrics } from '../services/api';
 
-  const SORT_OPTIONS = [
-    { value: 'citations', label: '📊 Citations' },
-    { value: 'year',      label: '📅 Year' },
-    { value: 'degree',    label: '🔗 Connections' },
-    { value: 'alpha',     label: '🔤 Name (A–Z)' },
-  ];
+const SORT_OPTIONS = [
+  { value: 'citations',    label: 'Citations',    icon: '◈' },
+  { value: 'influential',  label: 'Influential',  icon: '★' },
+  { value: 'year',         label: 'Most Recent',  icon: '◷' },
+  { value: 'degree',       label: 'Connections',  icon: '⬡' },
+  { value: 'impact',       label: 'Impact Score', icon: '⚡' },
+  { value: 'alpha',        label: 'Name A–Z',     icon: 'Az' },
+];
 
-  const LAYOUTS = [
-    { value: 'force',    label: '⚛ Force' },
-    { value: 'radial',   label: '◎ Radial' },
-    { value: 'cluster',  label: '⬡ Cluster' },
-  ];
+const TOP_K_OPTIONS = [5, 10, 20, 50];
 
-  const TOP_K_OPTIONS = [5, 10, 20, 50];
-
-  const stats = {
-    papers:   graphData.nodes.filter(n => n.type === 'paper').length,
-    models:   graphData.nodes.filter(n => n.type === 'model').length,
-    datasets: graphData.nodes.filter(n => n.type === 'dataset').length,
-    edges:    graphData.edges.length,
-  };
-
-  const BtnGroup = ({ options, activeValue, onSelect }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      {options.map(({ value, label }) => {
-        const active = activeValue === value;
-        return (
-          <button key={value} onClick={() => onSelect(value)}
-            style={{
-              textAlign: 'left', padding: '6px 10px', borderRadius: 6,
-              fontSize: 12, cursor: 'pointer', transition: 'all 0.12s',
-              border: `1px solid ${active ? 'var(--accent-blue)' : 'var(--border-default)'}`,
-              background: active ? 'var(--glow-blue)' : 'var(--bg-elevated)',
-              color: active ? 'var(--accent-blue)' : 'var(--text-secondary)',
-              fontWeight: active ? 600 : 400,
-            }}
-          >{label}</button>
-        );
-      })}
+function StatRow({ label, value, color }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+      <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ color: color || 'var(--text-primary)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{value}</span>
     </div>
   );
+}
+
+export default function SortingControls({
+  filters,
+  onFiltersChange,
+  graphData,
+  onExport,
+  onExportCSV,
+  onTopK,
+  topK,
+  onResetGraph,
+  bookmarkCount,
+  onClearBookmarks,
+}) {
+  const set = (key, val) => onFiltersChange({ ...filters, [key]: val });
+
+  const papers   = graphData.nodes.filter((n) => n.type === 'paper');
+  const models   = graphData.nodes.filter((n) => n.type === 'model');
+  const datasets = graphData.nodes.filter((n) => n.type === 'dataset');
+  const authors  = graphData.nodes.filter((n) => n.type === 'author');
+
+  const topCited  = papers.slice().sort((a, b) => (b.metadata?.citationCount || 0) - (a.metadata?.citationCount || 0))[0];
+  const topInflu  = papers.slice().sort((a, b) => (b.metadata?.influentialCitationCount || 0) - (a.metadata?.influentialCitationCount || 0))[0];
+
+  const totalCitations = papers.reduce((s, p) => s + (p.metadata?.citationCount || 0), 0);
+  const avgCitations   = papers.length ? Math.round(totalCitations / papers.length) : 0;
+
+  const openAccessCount = papers.filter((p) => p.metadata?.isOpenAccess).length;
+
+  const topImpact = papers.slice().sort((a, b) => {
+    const { impactScore: ia } = computeMetrics(a);
+    const { impactScore: ib } = computeMetrics(b);
+    return ib - ia;
+  })[0];
+
+  const btnStyle = (active) => ({
+    textAlign: 'left', padding: '6px 10px', borderRadius: 7,
+    fontSize: 11.5, cursor: 'pointer', transition: 'all 0.12s',
+    border: `1px solid ${active ? 'var(--accent-blue)' : 'var(--border-default)'}`,
+    background: active ? 'var(--glow-blue)' : 'var(--bg-elevated)',
+    color: active ? 'var(--accent-blue)' : 'var(--text-secondary)',
+    fontWeight: active ? 600 : 400,
+    width: '100%',
+    display: 'flex', alignItems: 'center', gap: 7,
+    fontFamily: 'var(--font-sans)',
+  });
 
   return (
     <aside style={{
-      width: 205,
+      width: 210,
       background: 'var(--bg-surface)',
       borderLeft: '1px solid var(--border-default)',
-      padding: '16px 14px',
+      padding: '14px 13px',
       display: 'flex',
       flexDirection: 'column',
-      gap: 20,
+      gap: 18,
       overflowY: 'auto',
       flexShrink: 0,
     }}>
-      {/* Sort */}
+
       <div>
         <div className="section-label">Sort By</div>
-        <BtnGroup options={SORT_OPTIONS} activeValue={filters.sortBy} onSelect={(v) => set('sortBy', v)} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {SORT_OPTIONS.map(({ value, label, icon }) => {
+            const active = (filters.sortBy || 'citations') === value;
+            return (
+              <button key={value} onClick={() => set('sortBy', value)} style={btnStyle(active)}>
+                <span style={{ fontSize: 11, opacity: 0.7, width: 14, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Order */}
       <div>
         <div className="section-label">Order</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[{ v: 'desc', label: '↓ High → Low' }, { v: 'asc', label: '↑ Low → High' }].map(({ v, label }) => {
-            const active = filters.sortOrder === v;
+        <div style={{ display: 'flex', gap: 5 }}>
+          {[{ v: 'desc', label: '↓ High–Low' }, { v: 'asc', label: '↑ Low–High' }].map(({ v, label }) => {
+            const active = (filters.sortOrder || 'desc') === v;
             return (
               <button key={v} onClick={() => set('sortOrder', v)}
                 style={{
-                  flex: 1, padding: '5px 4px', fontSize: 10.5, borderRadius: 6, cursor: 'pointer',
+                  flex: 1, padding: '5px 4px', fontSize: 10.5, borderRadius: 7, cursor: 'pointer',
                   border: `1px solid ${active ? 'var(--accent-blue)' : 'var(--border-default)'}`,
                   background: active ? 'var(--glow-blue)' : 'var(--bg-elevated)',
                   color: active ? 'var(--accent-blue)' : 'var(--text-secondary)',
                   fontWeight: active ? 600 : 400,
                   transition: 'all 0.12s',
+                  fontFamily: 'var(--font-sans)',
                 }}
               >{label}</button>
             );
@@ -83,21 +115,21 @@ export default function SortingControls({ filters, onFiltersChange, graphData, o
         </div>
       </div>
 
-      {/* Max Nodes */}
       <div>
         <div className="section-label">Max Nodes</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
           {[25, 50, 100, 200].map((v) => {
-            const active = filters.maxNodes === v;
+            const active = (filters.maxNodes || 100) === v;
             return (
               <button key={v} onClick={() => set('maxNodes', v)}
                 style={{
-                  padding: '4px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
+                  padding: '4px 10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer',
                   border: `1px solid ${active ? 'var(--accent-blue)' : 'var(--border-default)'}`,
                   background: active ? 'var(--glow-blue)' : 'var(--bg-elevated)',
                   color: active ? 'var(--accent-blue)' : 'var(--text-secondary)',
                   fontWeight: active ? 600 : 400,
                   transition: 'all 0.12s',
+                  fontFamily: 'var(--font-sans)',
                 }}
               >{v}</button>
             );
@@ -105,15 +137,6 @@ export default function SortingControls({ filters, onFiltersChange, graphData, o
         </div>
       </div>
 
-      {/* Layout */}
-      {onLayoutChange && (
-        <div>
-          <div className="section-label">Graph Layout</div>
-          <BtnGroup options={LAYOUTS} activeValue={layout || 'force'} onSelect={onLayoutChange} />
-        </div>
-      )}
-
-      {/* Top-K */}
       <div>
         <div className="section-label">Top-K Papers</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
@@ -122,76 +145,137 @@ export default function SortingControls({ filters, onFiltersChange, graphData, o
             return (
               <button key={k} onClick={() => onTopK(active ? null : k)}
                 style={{
-                  padding: '4px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
+                  padding: '4px 10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer',
                   border: `1px solid ${active ? 'var(--accent-amber)' : 'var(--border-default)'}`,
-                  background: active ? 'rgba(245,166,35,0.12)' : 'var(--bg-elevated)',
+                  background: active ? 'var(--glow-amber)' : 'var(--bg-elevated)',
                   color: active ? 'var(--accent-amber)' : 'var(--text-secondary)',
                   fontWeight: active ? 600 : 400,
                   transition: 'all 0.12s',
+                  fontFamily: 'var(--font-sans)',
                 }}
               >Top {k}</button>
             );
           })}
         </div>
         {topK !== null && (
-          <button onClick={() => onTopK(null)} className="btn btn-ghost" style={{ width: '100%', fontSize: 11 }}>
+          <button onClick={() => onTopK(null)} className="btn btn-ghost" style={{ width: '100%', fontSize: 10.5 }}>
             Show All
           </button>
         )}
       </div>
 
-      {/* Actions */}
       <div>
         <div className="section-label">Actions</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <button className="btn btn-ghost" onClick={onResetGraph} style={{ width: '100%', justifyContent: 'flex-start', gap: 8 }}>
             <span>↺</span> Reset Graph
           </button>
-          <button className="btn btn-ghost" onClick={onExport} style={{ width: '100%', justifyContent: 'flex-start', gap: 8, color: 'var(--accent-green)', borderColor: 'rgba(62,207,142,0.3)' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(62,207,142,0.08)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          <button
+            className="btn btn-ghost"
+            onClick={onExport}
+            style={{ width: '100%', justifyContent: 'flex-start', gap: 8, color: 'var(--accent-green)', borderColor: 'rgba(16,185,129,0.3)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--glow-green)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             <span>↓</span> Export JSON
           </button>
           {onExportCSV && (
-            <button className="btn btn-ghost" onClick={onExportCSV} style={{ width: '100%', justifyContent: 'flex-start', gap: 8 }}>
+            <button
+              className="btn btn-ghost"
+              onClick={onExportCSV}
+              style={{ width: '100%', justifyContent: 'flex-start', gap: 8 }}
+            >
               <span>↓</span> Export CSV
+            </button>
+          )}
+          {bookmarkCount > 0 && (
+            <button
+              className="btn btn-ghost"
+              onClick={onClearBookmarks}
+              style={{ width: '100%', justifyContent: 'flex-start', gap: 8, color: 'var(--accent-amber)', borderColor: 'rgba(245,158,11,0.3)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--glow-amber)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span>☆</span> Clear {bookmarkCount} bookmark{bookmarkCount !== 1 ? 's' : ''}
             </button>
           )}
         </div>
       </div>
 
-      {/* Stats */}
       <div>
         <div className="section-label">Graph Stats</div>
         <div style={{
           background: 'var(--bg-elevated)',
           border: '1px solid var(--border-default)',
-          borderRadius: 8, padding: '10px 12px',
+          borderRadius: 9, padding: '10px 12px',
           display: 'flex', flexDirection: 'column', gap: 6,
         }}>
-          {[
-            { label: 'Papers',   val: stats.papers,   color: '#5b9df9' },
-            { label: 'Models',   val: stats.models,   color: '#f5a623' },
-            { label: 'Datasets', val: stats.datasets, color: '#3ecf8e' },
-          ].map(({ label, val, color }) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-              <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-              <span style={{ color, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{val}</span>
-            </div>
-          ))}
-          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 6, marginTop: 2, display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-            <span style={{ color: 'var(--text-muted)' }}>Total edges</span>
-            <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>{stats.edges}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-            <span style={{ color: 'var(--text-muted)' }}>Total nodes</span>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {stats.papers + stats.models + stats.datasets}
-            </span>
-          </div>
+          <StatRow label="Papers"   value={papers.length}   color="var(--node-paper)"   />
+          <StatRow label="Models"   value={models.length}   color="var(--node-model)"   />
+          <StatRow label="Datasets" value={datasets.length} color="var(--node-dataset)" />
+          {authors.length > 0 && <StatRow label="Authors" value={authors.length} color="var(--node-author)" />}
+          <div style={{ height: 1, background: 'var(--border-subtle)', margin: '2px 0' }} />
+          <StatRow label="Total edges" value={graphData.edges.length} />
+          <StatRow label="Total nodes" value={graphData.nodes.length} />
         </div>
       </div>
+
+      {papers.length > 0 && (
+        <div>
+          <div className="section-label">Insights</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {topCited && (
+              <div style={{
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+                borderRadius: 8, padding: '8px 10px',
+              }}>
+                <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontWeight: 700 }}>
+                  Most Cited
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-primary)', fontWeight: 600, lineHeight: 1.3, marginBottom: 3 }}>
+                  {topCited.label.length > 28 ? topCited.label.slice(0, 28) + '…' : topCited.label}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--accent-amber)', fontFamily: 'var(--font-mono)' }}>
+                  {(topCited.metadata?.citationCount || 0).toLocaleString()} citations
+                </div>
+              </div>
+            )}
+
+            {topImpact && topImpact.id !== topCited?.id && (
+              <div style={{
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+                borderRadius: 8, padding: '8px 10px',
+              }}>
+                <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontWeight: 700 }}>
+                  Highest Impact
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-primary)', fontWeight: 600, lineHeight: 1.3, marginBottom: 3 }}>
+                  {topImpact.label.length > 28 ? topImpact.label.slice(0, 28) + '…' : topImpact.label}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--accent-green)', fontFamily: 'var(--font-mono)' }}>
+                  {computeMetrics(topImpact).impactScore.toLocaleString()} impact
+                </div>
+              </div>
+            )}
+
+            <div style={{
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+              borderRadius: 8, padding: '8px 10px',
+              display: 'flex', flexDirection: 'column', gap: 5,
+            }}>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 2, fontWeight: 700 }}>
+                Summary
+              </div>
+              <StatRow label="Avg citations" value={avgCitations.toLocaleString()} />
+              <StatRow label="Open access"   value={`${openAccessCount}/${papers.length}`} color="var(--accent-green)" />
+              <StatRow
+                label="Total citations"
+                value={totalCitations >= 1000 ? `${(totalCitations / 1000).toFixed(0)}k` : totalCitations}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

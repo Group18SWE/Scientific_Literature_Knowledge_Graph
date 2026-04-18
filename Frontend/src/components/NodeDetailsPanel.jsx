@@ -1,202 +1,365 @@
+import { useState } from 'react';
 import { NODE_CONFIG } from './Legend';
+import { computeMetrics, getSimilarPapers } from '../services/api';
 
-export default function NodeDetailsPanel({ node, neighborIds, graphData, onClose, onSelectNode, darkMode }) {
+const CURRENT_YEAR = new Date().getFullYear();
+void CURRENT_YEAR;
+
+function ImpactBar({ value, max, color }) {
+  const pct = Math.min((value / Math.max(max, 1)) * 100, 100);
+  return (
+    <div className="impact-bar">
+      <div className="impact-bar-fill" style={{ width: `${pct}%`, background: color }} />
+    </div>
+  );
+}
+
+export function NodeHoverPreview({ hoverInfo }) {
+  if (!hoverInfo) return null;
+  const { node, x, y } = hoverInfo;
+  const m = node.metadata || {};
+  const cfg = NODE_CONFIG[node.type] || NODE_CONFIG.paper;
+  const metrics = computeMetrics(node);
+
+  const vW = window.innerWidth;
+  const vH = window.innerHeight;
+  const tW = 260;
+  const tH = 140;
+  let left = x + 14;
+  let top = y + 14;
+  if (left + tW > vW - 10) left = x - tW - 14;
+  if (top + tH > vH - 10) top = y - tH - 14;
+
+  return (
+    <div className="node-tooltip animate-fade-up" style={{ left, top }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        <span style={{
+          padding: '1px 7px', borderRadius: 10, fontSize: 9, fontWeight: 700,
+          background: cfg.color + '22', color: cfg.color, border: `1px solid ${cfg.color}44`,
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>{node.type}</span>
+        {m.year && <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{m.year}</span>}
+        {m.isOpenAccess && <span style={{ fontSize: 9, color: '#10b981', fontWeight: 600 }}>Open</span>}
+      </div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.4, marginBottom: 5 }}>
+        {(m.title || m.name || node.label).length > 55
+          ? (m.title || m.name || node.label).slice(0, 55) + '…'
+          : (m.title || m.name || node.label)}
+      </div>
+      {m.tldr?.text && (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 6 }}>
+          {m.tldr.text.length > 90 ? m.tldr.text.slice(0, 90) + '…' : m.tldr.text}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        {node.type === 'paper' && (
+          <>
+            <span style={{ fontSize: 11, color: 'var(--accent-blue)', fontFamily: 'var(--font-mono)' }}>
+              {(m.citationCount || 0).toLocaleString()} cites
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              Impact: {metrics.impactScore.toLocaleString()}
+            </span>
+          </>
+        )}
+        {node.type === 'author' && (
+          <>
+            <span style={{ fontSize: 11, color: 'var(--accent-orange)', fontFamily: 'var(--font-mono)' }}>
+              h-index: {m.hIndex || '—'}
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.paperCount || 0} papers</span>
+          </>
+        )}
+        {(node.type === 'model' || node.type === 'dataset') && m.task && (
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{m.task}</span>
+        )}
+      </div>
+      <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 6 }}>Click to expand details</div>
+    </div>
+  );
+}
+
+export default function NodeDetailsPanel({ node, neighborIds, graphData, onClose, onSelectNode, onBookmark, bookmarks }) {
+  const [tab, setTab] = useState('info');
+  const [abstractExpanded, setAbstractExpanded] = useState(false);
+
   if (!node) return null;
 
-  const bg = darkMode ? '#060d1a' : '#ffffff';
-  const border = darkMode ? '#0f1f36' : '#e2e8f0';
-  const labelColor = darkMode ? '#1e3a5f' : '#94a3b8';
-  const mutedColor = darkMode ? '#334155' : '#94a3b8';
-  const textColor = darkMode ? '#94a3b8' : '#475569';
-  const titleColor = darkMode ? '#f1f5f9' : '#0f172a';
-  const cardBg = darkMode ? '#0a1628' : '#f8fafc';
-  const cardBorder = darkMode ? '#1e3a5f' : '#e2e8f0';
-
-  const cfg = NODE_CONFIG[node.type];
+  const cfg = NODE_CONFIG[node.type] || NODE_CONFIG.paper;
   const m = node.metadata || {};
+  const metrics = computeMetrics(node);
+  const isBookmarked = bookmarks?.has(node.id);
+  const similarPapers = node.type === 'paper' ? getSimilarPapers(node.id, graphData) : [];
 
-  const neighbors = [...neighborIds]
+  const neighbors = [...(neighborIds || [])]
     .map((id) => graphData.nodes.find((n) => n.id === id))
     .filter(Boolean);
 
-  const rows = [
-    ['Year',           m.year],
-    ['Published',      m.publicationDate],
-    ['Venue',          m.publicationVenue?.name || m.venue],
-    ['Pub. Types',     m.publicationTypes?.join(', ')],
-    ['arXiv ID',       m.arxivId],
-    ['Citations',      m.citationCount?.toLocaleString()],
-    ['Influential',    m.influentialCitationCount?.toLocaleString()],
-    ['References',     m.referenceCount?.toLocaleString()],
-    ['Fields',         m.fieldsOfStudy?.join(', ')],
-    ['Task',           m.task],
-    ['Framework',      m.framework],
-    ['Parameters',     m.paramCount],
-    ['Size',           m.size],
-  ].filter(([, v]) => v != null && v !== '');
+  const buildRows = () => {
+    if (node.type === 'paper') return [
+      ['Year', m.year],
+      ['Published', m.publicationDate],
+      ['Venue', m.publicationVenue?.name || m.venue],
+      ['arXiv ID', m.arxivId],
+      ['Citations', m.citationCount?.toLocaleString()],
+      ['Influential', m.influentialCitationCount?.toLocaleString()],
+      ['References', m.referenceCount?.toLocaleString()],
+      ['Fields', m.fieldsOfStudy?.join(', ')],
+    ].filter(([, v]) => v != null && v !== '');
+    if (node.type === 'model') return [
+      ['Task', m.task],
+      ['Framework', m.framework],
+      ['Parameters', m.paramCount],
+    ].filter(([, v]) => v != null);
+    if (node.type === 'author') return [
+      ['h-Index', m.hIndex],
+      ['Papers', m.paperCount],
+      ['Total Citations', m.citationCount?.toLocaleString()],
+      ['Affiliations', m.affiliations?.join(', ')],
+      ['Fields', m.fieldsOfStudy?.join(', ')],
+    ].filter(([, v]) => v != null);
+    return [
+      ['Task', m.task],
+      ['Size', m.size],
+    ].filter(([, v]) => v != null);
+  };
+
+  const metadataRows = buildRows();
+  const tabs = [
+    { id: 'info', label: 'Info' },
+    { id: 'connections', label: `Links (${neighbors.length})` },
+    ...(node.type === 'paper' && similarPapers.length > 0 ? [{ id: 'similar', label: 'Similar' }] : []),
+  ];
 
   return (
     <aside
-      className="animate-fade-up flex flex-col gap-4 overflow-y-auto shrink-0"
-      style={{ width: 290, background: bg, borderLeft: `1px solid ${border}`, padding: '18px 16px' }}
+      className="animate-slide-in flex flex-col overflow-hidden shrink-0"
+      style={{
+        width: 300,
+        background: 'var(--bg-surface)',
+        borderLeft: '1px solid var(--border-default)',
+        boxShadow: 'var(--shadow-lg)',
+      }}
     >
-      <div className="flex items-start justify-between">
-        <span
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wider"
-          style={{
-            background: cfg.color + '20',
-            color: cfg.color,
-            border: `1px solid ${cfg.color}44`,
-          }}
-        >
-          <NodeIcon type={node.type} />
-          {node.type.toUpperCase()}
-        </span>
-        <button
-          onClick={onClose}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-lg leading-none transition-all"
-          style={{ background: 'none', border: 'none', color: mutedColor, cursor: 'pointer' }}
-        >
-          ×
-        </button>
-      </div>
-
-      <div>
-        <h2
-          className="font-semibold leading-snug mb-1.5"
-          style={{ fontSize: 14, color: titleColor, fontFamily: 'var(--font-sans)' }}
-        >
-          {m.title || node.label}
+      <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+          <span style={{
+            padding: '2px 9px', borderRadius: 12, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em',
+            textTransform: 'uppercase', background: cfg.color + '1a', color: cfg.color, border: `1px solid ${cfg.color}44`,
+          }}>
+            {node.type}
+          </span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {onBookmark && (
+              <button
+                onClick={() => onBookmark(node.id)}
+                title={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
+                style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  border: `1px solid ${isBookmarked ? cfg.color + '44' : 'var(--border-default)'}`,
+                  background: isBookmarked ? cfg.color + '15' : 'transparent',
+                  color: isBookmarked ? cfg.color : 'var(--text-muted)',
+                  cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {isBookmarked ? '★' : '☆'}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              style={{
+                width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border-default)',
+                background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <h2 style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.4, margin: '0 0 4px' }}>
+          {m.title || m.name || node.label}
         </h2>
         {m.authors && m.authors.length > 0 && (
-          <p className="text-xs leading-relaxed" style={{ color: mutedColor }}>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
             {m.authors.map((a) => (typeof a === 'object' ? a.name : a)).join(', ')}
           </p>
         )}
       </div>
 
-      {m.tldr?.text && (
-        <div
-          className="rounded-lg p-3"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-        >
-          <div className="text-xs font-bold tracking-widest mb-1.5" style={{ color: labelColor, fontSize: 9 }}>
-            TL;DR
+      {node.type === 'paper' && (
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 10, flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-mono)', color: cfg.color }}>
+              {metrics.impactScore >= 1000 ? `${(metrics.impactScore / 1000).toFixed(0)}k` : metrics.impactScore}
+            </span>
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Impact</span>
           </div>
-          <p className="text-xs leading-relaxed" style={{ color: textColor }}>
-            {m.tldr.text}
-          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent-amber)' }}>
+              {metrics.citationDensity >= 1000 ? `${(metrics.citationDensity / 1000).toFixed(1)}k` : metrics.citationDensity}
+            </span>
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Cites/yr</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
+            <span style={{ fontSize: 9.5, fontWeight: 700, color: m.isOpenAccess ? '#10b981' : '#f87171' }}>
+              {m.isOpenAccess ? 'OPEN' : 'CLOSED'}
+            </span>
+            {m.openAccessPdf?.url && (
+              <a href={m.openAccessPdf.url} target="_blank" rel="noreferrer"
+                style={{ fontSize: 10, color: 'var(--accent-blue)', textDecoration: 'none' }}>
+                PDF ↗
+              </a>
+            )}
+          </div>
         </div>
       )}
 
-      {rows.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {rows.map(([k, v]) => (
-            <div key={k} className="flex justify-between items-start gap-3">
-              <span
-                className="text-xs shrink-0"
-                style={{ color: labelColor, fontSize: 9, letterSpacing: '0.08em', paddingTop: 1 }}
-              >
-                {String(k).toUpperCase()}
-              </span>
-              <span className="text-xs text-right" style={{ color: textColor }}>
-                {String(v)}
-              </span>
-            </div>
+      <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+        <div className="tab-bar">
+          {tabs.map(({ id, label }) => (
+            <button key={id} className={`tab-item${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>
+              {label}
+            </button>
           ))}
         </div>
-      )}
+      </div>
 
-      {m.isOpenAccess != null && (
-        <div className="flex items-center gap-2">
-          <span
-            className="px-2 py-0.5 rounded text-xs font-semibold tracking-wider"
-            style={{
-              background: m.isOpenAccess ? '#22c55e18' : '#ef444418',
-              color:      m.isOpenAccess ? '#22c55e'   : '#ef4444',
-              border: `1px solid ${m.isOpenAccess ? '#22c55e44' : '#ef444444'}`,
-              fontSize: 9,
-            }}
-          >
-            {m.isOpenAccess ? '✓ OPEN ACCESS' : '⊘ CLOSED'}
-          </span>
-          {m.openAccessPdf?.url && (
-            <a
-              href={m.openAccessPdf.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs transition-colors"
-              style={{ color: '#38bdf8', textDecoration: 'none' }}
-            >
-              PDF ↗
-            </a>
-          )}
-        </div>
-      )}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+        {tab === 'info' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {m.tldr?.text && (
+              <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 5 }}>TL;DR</div>
+                <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{m.tldr.text}</p>
+              </div>
+            )}
 
-      {m.abstract && (
-        <div>
-          <div
-            className="text-xs font-semibold tracking-widest mb-1.5"
-            style={{ color: labelColor, fontSize: 9 }}
-          >
-            ABSTRACT
-          </div>
-          <p className="text-xs leading-relaxed" style={{ color: textColor }}>
-            {m.abstract.length > 280 ? m.abstract.slice(0, 280) + '…' : m.abstract}
-          </p>
-        </div>
-      )}
+            {metadataRows.length > 0 && (
+              <div>
+                <div className="section-label">Metadata</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {metadataRows.map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                      <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', paddingTop: 1, flexShrink: 0 }}>{k}</span>
+                      <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', textAlign: 'right' }}>{String(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-      {neighbors.length > 0 && (
-        <div>
-          <div
-            className="text-xs font-semibold tracking-widest mb-2"
-            style={{ color: labelColor, fontSize: 9 }}
-          >
-            CONNECTIONS ({neighbors.length})
+            {m.abstract && (
+              <div>
+                <div className="section-label">Abstract</div>
+                <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.65, margin: '0 0 6px' }}>
+                  {abstractExpanded ? m.abstract : (m.abstract.length > 260 ? m.abstract.slice(0, 260) + '…' : m.abstract)}
+                </p>
+                {m.abstract.length > 260 && (
+                  <button
+                    onClick={() => setAbstractExpanded((e) => !e)}
+                    style={{ fontSize: 11, color: 'var(--accent-blue)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  >
+                    {abstractExpanded ? 'Show less' : 'Read more'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {node.type === 'paper' && (
+              <div>
+                <div className="section-label">Impact</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { label: 'Citation Impact', val: metrics.impactScore, max: 200000, color: cfg.color },
+                    { label: 'Annual Density', val: metrics.citationDensity, max: 15000, color: 'var(--accent-amber)' },
+                  ].map(({ label, val, max, color }) => (
+                    <div key={label}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{label}</span>
+                        <span style={{ fontSize: 10, color, fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{val.toLocaleString()}</span>
+                      </div>
+                      <ImpactBar value={val} max={max} color={color} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {neighbors.map((n) => {
-              const ncfg = NODE_CONFIG[n.type];
-              return (
-                <button
-                  key={n.id}
-                  onClick={() => onSelectNode(n)}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-all"
-                  style={{
-                    background: 'transparent',
-                    border: `1px solid ${darkMode ? '#1e293b' : '#e2e8f0'}`,
-                    color: textColor,
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = ncfg.color;
-                    e.currentTarget.style.color = ncfg.color;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = darkMode ? '#1e293b' : '#e2e8f0';
-                    e.currentTarget.style.color = textColor;
-                  }}
-                >
-                  <NodeIcon type={n.type} size={8} color={ncfg.color} />
-                  {n.label.length > 20 ? n.label.slice(0, 20) + '…' : n.label}
-                </button>
-              );
-            })}
+        )}
+
+        {tab === 'connections' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {neighbors.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', paddingTop: 20 }}>No connections visible</div>
+            ) : (
+              neighbors.map((n) => {
+                const ncfg = NODE_CONFIG[n.type] || NODE_CONFIG.paper;
+                return (
+                  <button
+                    key={n.id}
+                    onClick={() => onSelectNode(n)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7,
+                      border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', cursor: 'pointer',
+                      textAlign: 'left', transition: 'all 0.12s', width: '100%',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = ncfg.color; e.currentTarget.style.background = ncfg.color + '10'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+                  >
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: ncfg.color, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(n.metadata?.title || n.metadata?.name || n.label).length > 30
+                          ? (n.metadata?.title || n.metadata?.name || n.label).slice(0, 30) + '…'
+                          : (n.metadata?.title || n.metadata?.name || n.label)}
+                      </div>
+                      <div style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>{ncfg.label}</div>
+                    </div>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>→</span>
+                  </button>
+                );
+              })
+            )}
           </div>
-        </div>
-      )}
+        )}
+
+        {tab === 'similar' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+              Papers sharing models/datasets with this work
+            </div>
+            {similarPapers.map(({ node: sn, score }) => (
+              <button
+                key={sn.id}
+                onClick={() => onSelectNode(sn)}
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: 3, padding: '8px 10px', borderRadius: 7,
+                  border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', cursor: 'pointer',
+                  textAlign: 'left', transition: 'all 0.12s', width: '100%',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-blue)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-default)'; }}
+              >
+                <div style={{ fontSize: 11.5, color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                  {(sn.metadata?.title || sn.label).length > 40
+                    ? (sn.metadata?.title || sn.label).slice(0, 40) + '…'
+                    : (sn.metadata?.title || sn.label)}
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 9.5, color: 'var(--accent-blue)' }}>{score} shared</span>
+                  {sn.metadata?.year && <span style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>{sn.metadata.year}</span>}
+                  {sn.metadata?.citationCount && (
+                    <span style={{ fontSize: 9.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      {sn.metadata.citationCount.toLocaleString()} cites
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </aside>
   );
-}
-
-function NodeIcon({ type, size = 10, color }) {
-  const cfg = NODE_CONFIG[type];
-  const c = color || cfg.color;
-  if (type === 'paper') return <span style={{ color: c, fontSize: size }}>●</span>;
-  if (type === 'model') return <span style={{ color: c, fontSize: size }}>◆</span>;
-  return <span style={{ color: c, fontSize: size }}>■</span>;
 }
