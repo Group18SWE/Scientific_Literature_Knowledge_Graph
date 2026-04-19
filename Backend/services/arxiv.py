@@ -54,6 +54,8 @@ async def search_core_papers(core_query: str, max_results: int = 3):
         print(f"⚠️ Failed to parse CORE response JSON: {e}")
         return []
 
+    # Expected CORE v3 structure is {"results": [...]}; keep additional fallbacks for
+    # deployment/endpoint variance where records may be returned under "data" or "hits.hits".
     records = payload.get("results")
     if records is None and isinstance(payload.get("data"), list):
         records = payload.get("data")

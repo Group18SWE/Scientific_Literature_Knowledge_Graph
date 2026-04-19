@@ -15,9 +15,18 @@ async def background_worker():
     while True:
         try:
             # 1. Wait until an item is available in the queue
-            # Note: Right now your queue passes a simple 'paper_id' string. 
-            # We may update this later to pass a dictionary containing the arXiv metadata too!
-            paper_id = await paper_queue.get()
+            task_payload = await paper_queue.get()
+            if isinstance(task_payload, dict):
+                paper_data = task_payload
+                paper_id = str(paper_data.get("id", "")).strip()
+            else:
+                paper_id = str(task_payload).strip()
+                paper_data = {"id": paper_id}
+
+            if not paper_id:
+                paper_queue.task_done()
+                continue
+
             print(f"⚙️ Worker picked up paper ID: {paper_id}")
             
             # 2. Check if the paper is already in our Neo4j database
@@ -30,7 +39,7 @@ async def background_worker():
             
             # 3. Paper is NOT in DB. Fetch CORE XML/text.
             print(f"🟡 Paper {paper_id} not found in DB. Fetching...")
-            parsed_text = await fetch_and_parse_core_xml({"id": paper_id})
+            parsed_text = await fetch_and_parse_core_xml(paper_data)
             
             if parsed_text:
                 print(f"📝 Extracted {len(parsed_text)} characters. Starting Entity Extraction...")
