@@ -327,8 +327,10 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
 
                 target_node = record.get("target")
                 rel = record.get("r")
+                print("REL:", rel, type(rel))
+                print("TARGET:", target_node)
 
-                if target_node and rel:
+                if target_node is not None and rel is not None:
                     t_id = target_node["id"]
 
                     if t_id not in nodes:
@@ -343,7 +345,7 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
                         "id": f"{p_id}-{t_id}",
                         "source": p_id,
                         "target": t_id,
-                        "type": rel[1] if isinstance(rel, tuple) else "CONNECTED_TO"
+                        "type": rel.type
                     })
 
             except Exception as record_error:
