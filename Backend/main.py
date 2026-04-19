@@ -12,7 +12,7 @@ async def lifespan(app: FastAPI):
     print("🚀 Starting up ArXiv Grapher API...")
     await db.connect()
     
-    CONCURRENCY_LIMIT = 3
+    CONCURRENCY_LIMIT = 2
     worker_tasks = [asyncio.create_task(background_worker()) for _ in range(CONCURRENCY_LIMIT)]
     
     yield 
@@ -33,10 +33,9 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows GET, POST, OPTIONS, etc.
-    allow_headers=["*"],  # Allows headers like Content-Type or Authorization
+    allow_origins=["*"],      # Allow all origins
+    allow_credentials=False,  # Must be False if allow_origins is ["*"]
+    allow_methods=["*"],      # Allow all HTTP methods
+    allow_headers=["*"],      # Allow all request headers
 )
-
 app.include_router(router)

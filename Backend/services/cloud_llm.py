@@ -94,7 +94,7 @@ async def extract_entities(parsed_text: str) -> dict:
 
     prompt = f"""
     You are an expert AI research assistant. Read the following academic paper text 
-    and extract the explicit Machine Learning Models and Datasets used or evaluated by the authors.
+    and extract the explicit Models and Datasets used or evaluated by the authors.
     
     Rules:
     - Do not guess or hallucinate. If a field like 'paramCount' or 'framework' is not stated, leave it null.
@@ -102,7 +102,7 @@ async def extract_entities(parsed_text: str) -> dict:
     - Only extract models/datasets directly relevant to the paper's core experiments.
     
     PAPER TEXT (length={len(parsed_text)}):
-    {parsed_text[:1000]}  # truncate for logging sanity
+    {parsed_text}  # truncate for logging sanity
     """
 
     try:

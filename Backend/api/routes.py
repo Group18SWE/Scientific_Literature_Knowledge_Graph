@@ -55,17 +55,17 @@ async def search_and_graph_papers(query: str):
     print("⚡ Starting concurrent paper processing...")
     # asyncio.gather runs all 3 paper pipelines at the EXACT SAME TIME
     # This keeps your API response time as low as possible.
-    tasks = [process_single_paper(paper) for paper in papers]
-    await asyncio.gather(*tasks)
+    for paper in papers:
+        await process_single_paper(paper)
     
     print("📊 All papers processed! Fetching final graph from Neo4j...")
     
     # 5. Query Neo4j for the JSON the frontend wants
     graph_data = await get_graph_for_papers(target_paper_ids)
-    print("ok 8===")
     response_payload = {
         "search_query": core_query,
         "results_found": len(papers),
         "graph": graph_data  # <--- Here is the exact {nodes: [], edges: []} for React!
     }
+    print("ok 8===")
     return JSONResponse(content=jsonable_encoder(response_payload))

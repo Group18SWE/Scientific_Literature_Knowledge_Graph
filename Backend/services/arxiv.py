@@ -32,21 +32,91 @@ def _get_core_headers() -> dict:
         headers["Authorization"] = f"Bearer {settings.CORE_API_KEY}"
     return headers
 
+import re
+
+def _slugify(text: str):
+    return re.sub(r'[^a-z0-9]+', '_', text.lower()).strip('_')
+
+
 def _normalize_core_record(raw: dict) -> dict:
     source = raw.get("_source", raw)
-    paper_id = source.get("id")
-    if paper_id is None:
-        paper_id = source.get("coreId")
-    if paper_id is None:
-        paper_id = raw.get("id")
+
+    # --- ID fallback ---
+    paper_id = source.get("id") or source.get("coreId") or raw.get("id")
+
+    # --- Basic fields ---
     title = source.get("title") or "No title available"
+    abstract = source.get("abstract")
+
+    # --- Authors ---
+    authors = []
+    for a in source.get("authors") or []:
+        name = a.get("name", "").strip()
+
+        # Convert "Last, First" → "First Last"
+        if "," in name:
+            last, first = name.split(",", 1)
+            name = f"{first.strip()} {last.strip()}"
+
+        authors.append({
+            "id": f"author_{_slugify(name)}",
+            "name": name
+        })
+
+    # --- Identifiers ---
+    identifiers = source.get("identifiers") or []
+    external_ids = {}
+    for item in identifiers:
+        t = item.get("type")
+        v = item.get("identifier")
+
+        if t == "DOI":
+            external_ids["doi"] = v
+        elif t == "ARXIV_ID":
+            external_ids["arxivId"] = v
+        elif t == "CORE_ID":
+            external_ids["coreId"] = v
+
+    # --- URLs ---
+    download_url = source.get("downloadUrl")
+    fulltext_urls = source.get("sourceFulltextUrls") or source.get("fullTextIdentifiers") or []
+
+    pdf_url = None
+    if download_url and "arxiv.org/abs/" in download_url:
+        pdf_url = download_url.replace("/abs/", "/pdf/")
+    else:
+        pdf_url = download_url
+
     return {
         "id": str(paper_id) if paper_id is not None else "",
+
         "title": title,
-        "doi": source.get("doi"),
-        "abstract": source.get("abstract"),
-        "downloadUrl": source.get("downloadUrl"),
-        "sourceFulltextUrls": source.get("sourceFulltextUrls") or source.get("fullTextIdentifiers") or []
+        "abstract": abstract,
+
+        "authors": authors,
+
+        "year": source.get("yearPublished"),
+        "publicationDate": source.get("publishedDate"),
+
+        "doi": source.get("doi") or external_ids.get("doi"),
+
+        "citationCount": source.get("citationCount", 0),
+
+        "venue": source.get("publisher"),
+
+        "publicationTypes": [source.get("documentType")] if source.get("documentType") else [],
+
+        "fieldsOfStudy": (
+            [source.get("fieldOfStudy")] if source.get("fieldOfStudy") else ["Computer Science"]
+        ),
+
+        "openAccess": bool(download_url or fulltext_urls),
+
+        "externalIds": external_ids,
+
+        "downloadUrl": download_url,
+        "pdfUrl": pdf_url,
+        "sourceFulltextUrls": fulltext_urls,
     }
 
 async def search_core_papers(core_query: str, max_results: int = 3):

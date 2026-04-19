@@ -446,7 +446,7 @@ export async function searchGraph({ query, yearFrom, yearTo, sortBy, order } = {
   const response = await axios.post(
     `${API_BASE_URL}/search/?${params.toString()}`,
     {},
-    { timeout: 30000 }
+    { timeout: 0 }
   );
   return response.data;
 }
