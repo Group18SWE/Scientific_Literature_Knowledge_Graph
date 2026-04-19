@@ -276,8 +276,8 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
 
     query = """
     MATCH (p:Paper) WHERE p.id IN $paper_ids
-    OPTIONAL MATCH (p)-[r]->(target)
-    RETURN p, r, target
+    OPTIONAL MATCH (p)-[r]-(target)
+    RETURN DISTINCT p, r, target
     """
 
     nodes = {}
