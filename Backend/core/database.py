@@ -1,4 +1,5 @@
 import re
+import json
 import logging
 from typing import Any, Optional
 from neo4j import AsyncGraphDatabase
@@ -19,6 +20,64 @@ def _to_json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple, set)):
         return [_to_json_safe(v) for v in value]
     return str(value)
+
+
+def _is_neo4j_primitive(value: Any) -> bool:
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def _serialize_metadata_for_neo4j(metadata: dict[str, Any]) -> dict[str, Any]:
+    """
+    Neo4j properties can be primitives or lists of primitives.
+    Nested dict/list structures are JSON-stringified.
+    """
+    serialized: dict[str, Any] = {}
+    for key, value in metadata.items():
+        if _is_neo4j_primitive(value):
+            serialized[key] = value
+            continue
+
+        if isinstance(value, list):
+            if all(_is_neo4j_primitive(item) for item in value):
+                serialized[key] = value
+            else:
+                serialized[key] = json.dumps(value, ensure_ascii=False)
+            continue
+
+        if isinstance(value, dict):
+            serialized[key] = json.dumps(value, ensure_ascii=False)
+            continue
+
+        serialized[key] = str(value)
+
+    return serialized
+
+
+_JSON_METADATA_FIELDS = {
+    "authors",
+    "publicationVenue",
+    "openAccessPdf",
+    "externalIds",
+    "language",
+    "identifiers",
+    "contributors",
+    "dataProviders",
+    "journals",
+    "links",
+}
+
+
+def _deserialize_metadata_from_neo4j(metadata: dict[str, Any]) -> dict[str, Any]:
+    parsed = dict(metadata)
+    for key in _JSON_METADATA_FIELDS:
+        raw = parsed.get(key)
+        if not isinstance(raw, str):
+            continue
+        try:
+            parsed[key] = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+    return parsed
 
 class Neo4jConnection:
     def __init__(self):
@@ -101,6 +160,7 @@ async def save_graph_to_db(paper_id: str, entities: dict[str, Any], paper_metada
         paper_metadata = {}
     else:
         print(f"[INFO] Metadata received with keys: {list(paper_metadata.keys())}")
+        paper_metadata = _serialize_metadata_for_neo4j(paper_metadata)
 
     # Format models with our stable IDs
     models_data = []
@@ -257,11 +317,12 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
                 p_id = paper_node["id"]
 
                 if p_id not in nodes:
+                    paper_metadata = _deserialize_metadata_from_neo4j(dict(paper_node))
                     nodes[p_id] = {
                         "id": p_id,
                         "type": paper_node.get("type", "paper"),
                         "label": paper_node.get("title", "Unknown Title"),
-                        "metadata": _to_json_safe(dict(paper_node))
+                        "metadata": _to_json_safe(paper_metadata)
                     }
 
                 target_node = record.get("target")

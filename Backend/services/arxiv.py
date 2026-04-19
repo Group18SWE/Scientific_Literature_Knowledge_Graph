@@ -87,6 +87,35 @@ def _normalize_core_record(raw: dict) -> dict:
     else:
         pdf_url = download_url
 
+    year_published = source.get("yearPublished")
+    published_date = source.get("publishedDate")
+    if year_published is None and isinstance(published_date, str) and len(published_date) >= 4:
+        try:
+            year_published = int(published_date[:4])
+        except ValueError:
+            year_published = None
+
+    fields_of_study = source.get("fieldsOfStudy")
+    if not fields_of_study:
+        single_field = source.get("fieldOfStudy")
+        fields_of_study = [single_field] if single_field else []
+    elif isinstance(fields_of_study, str):
+        fields_of_study = [fields_of_study]
+
+    journals = source.get("journals") or []
+    journal_title = None
+    if journals and isinstance(journals[0], dict):
+        journal_title = journals[0].get("title")
+
+    publication_venue_name = (
+        source.get("publisher")
+        or journal_title
+        or "Unknown Venue"
+    )
+    publication_venue = {"name": publication_venue_name, "type": source.get("documentType")}
+
+    references = source.get("references") or []
+
     return {
         "id": str(paper_id) if paper_id is not None else "",
 
@@ -95,28 +124,48 @@ def _normalize_core_record(raw: dict) -> dict:
 
         "authors": authors,
 
-        "year": source.get("yearPublished"),
-        "publicationDate": source.get("publishedDate"),
+        "year": year_published,
+        "publicationDate": published_date,
 
         "doi": source.get("doi") or external_ids.get("doi"),
 
-        "citationCount": source.get("citationCount", 0),
+        "citationCount": source.get("citationCount") or 0,
+        "influentialCitationCount": source.get("influentialCitationCount") or 0,
+        "referenceCount": len(references),
 
-        "venue": source.get("publisher"),
+        "venue": publication_venue_name,
+        "publicationVenue": publication_venue,
 
         "publicationTypes": [source.get("documentType")] if source.get("documentType") else [],
 
-        "fieldsOfStudy": (
-            [source.get("fieldOfStudy")] if source.get("fieldOfStudy") else ["Computer Science"]
-        ),
+        "fieldsOfStudy": fields_of_study,
 
-        "openAccess": bool(download_url or fulltext_urls),
+        "isOpenAccess": bool(download_url or fulltext_urls),
+        "openAccessPdf": {"url": pdf_url} if pdf_url else None,
 
         "externalIds": external_ids,
+        "arxivId": source.get("arxivId") or external_ids.get("arxivId"),
+        "pubmedId": source.get("pubmedId"),
+        "magId": source.get("magId"),
+        "oaiIds": source.get("oaiIds") or [],
 
         "downloadUrl": download_url,
         "pdfUrl": pdf_url,
         "sourceFulltextUrls": fulltext_urls,
+
+        # Extra CORE metadata (nested values will be serialized before Neo4j write)
+        "acceptedDate": source.get("acceptedDate"),
+        "createdDate": source.get("createdDate"),
+        "depositedDate": source.get("depositedDate"),
+        "updatedDate": source.get("updatedDate"),
+        "documentType": source.get("documentType"),
+        "language": source.get("language"),
+        "identifiers": source.get("identifiers") or [],
+        "contributors": source.get("contributors") or [],
+        "outputs": source.get("outputs") or [],
+        "dataProviders": source.get("dataProviders") or [],
+        "journals": journals,
+        "links": source.get("links") or [],
     }
 
 async def search_core_papers(core_query: str, max_results: int = 3):
