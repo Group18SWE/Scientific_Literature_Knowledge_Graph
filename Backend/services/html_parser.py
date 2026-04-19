@@ -1,49 +1,91 @@
 import httpx
 from bs4 import BeautifulSoup
 import logging
+from core.config import settings
 
 # Set up a basic logger for console output
 logger = logging.getLogger(__name__)
 
-async def fetch_and_parse_ar5iv(paper_id: str) -> str:
+CORE_WORKS_URL = "https://api.core.ac.uk/v3/works"
+
+def _get_core_headers() -> dict:
+    headers = {"Accept": "application/json"}
+    if settings.CORE_API_KEY:
+        headers["Authorization"] = f"Bearer {settings.CORE_API_KEY}"
+    return headers
+
+def _extract_text_from_core_record(record: dict) -> str:
+    candidate_fields = [
+        "fullTextXml",
+        "xml",
+        "fullText",
+        "fulltext",
+        "description",
+        "abstract",
+    ]
+    for field in candidate_fields:
+        value = record.get(field)
+        if isinstance(value, str) and value.strip():
+            parsed = BeautifulSoup(value, "lxml")
+            text_content = parsed.get_text(separator="\n", strip=True)
+            if text_content:
+                return text_content
+    return ""
+
+def _fallback_text_from_metadata(paper_data: dict) -> str:
+    core_text = _extract_text_from_core_record(paper_data)
+    if core_text:
+        return core_text
+    return str(paper_data.get("abstract", "")).strip()
+
+def _fallback_text_from_response(payload: dict, paper_data: dict) -> str:
+    payload_text = _extract_text_from_core_record(payload)
+    if payload_text:
+        return payload_text
+    payload_abstract = str(payload.get("abstract", "")).strip()
+    if payload_abstract:
+        return payload_abstract
+    return _fallback_text_from_metadata(paper_data)
+
+async def fetch_and_parse_core_xml(paper_data: dict) -> str:
     """
-    Fetches the HTML version of an arXiv paper from ar5iv.labs.arxiv.org.
-    Strips the HTML tags to return clean text for entity extraction.
+    Fetches the paper record from CORE and extracts XML/text content for entity extraction.
     
     Args:
-        paper_id (str): The arXiv ID (e.g., '2502.07417v1')
+        paper_data (dict): CORE paper metadata containing at least an "id" field.
         
     Returns:
         str: Cleaned text content of the paper, or an empty string if it fails.
     """
-    logger.info(f"🌐 Fetching ar5iv HTML for {paper_id}...")
-    url = f"https://ar5iv.labs.arxiv.org/html/{paper_id}"
+    paper_id = str(paper_data.get("id", "")).strip()
+    if not paper_id:
+        return ""
+
+    logger.info(f"🌐 Fetching CORE XML/text for {paper_id}...")
+    url = f"{CORE_WORKS_URL}/{paper_id}"
     
     try:
-        # We use async context manager for non-blocking HTTP requests
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=20.0, headers=_get_core_headers()) as client:
             response = await client.get(url, follow_redirects=True)
             
-            # If the paper hasn't been compiled to HTML by arXiv yet, it might return 404
             if response.status_code != 200:
-                logger.warning(f"⚠️ ar5iv HTML not found for {paper_id} (Status: {response.status_code})")
-                return ""
+                logger.warning(f"⚠️ CORE full record fetch failed for {paper_id} (Status: {response.status_code})")
+                return _fallback_text_from_metadata(paper_data)
             
-            logger.info("✅ HTML downloaded! Parsing with BeautifulSoup...")
+            payload = response.json()
+            logger.info("✅ CORE record downloaded! Parsing XML/text...")
             
-            # Parse the HTML using the fast lxml parser
-            soup = BeautifulSoup(response.text, "lxml")
-            
-            # Remove scripts, styles, and potentially massive reference sections to save tokens
-            for element in soup(["script", "style"]):
-                element.decompose()
-                
-            # Extract plain text with a newline separator for readability
-            text_content = soup.get_text(separator="\n", strip=True)
+            text_content = _fallback_text_from_response(payload, paper_data)
             
             logger.info(f"📝 Successfully extracted {len(text_content)} characters!")
             return text_content
 
     except Exception as e:
-        logger.error(f"🔴 HTML Extraction failed for {paper_id}: {e}")
+        logger.error(f"🔴 CORE XML/text extraction failed for {paper_id}: {e}")
         return ""
+
+async def fetch_and_parse_ar5iv(paper_id: str) -> str:
+    """
+    Deprecated backward-compatible alias. Use fetch_and_parse_core_xml instead.
+    """
+    return await fetch_and_parse_core_xml({"id": paper_id})

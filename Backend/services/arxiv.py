@@ -1,78 +1,91 @@
-import os
 import httpx
-import xml.etree.ElementTree as ET
-import asyncio
+from core.config import settings
 
-async def search_papers(arxiv_query: str, max_results: int = 3):
+CORE_SEARCH_URL = "https://api.core.ac.uk/v3/search/works"
+
+def _get_core_headers() -> dict:
+    headers = {"Accept": "application/json"}
+    if settings.CORE_API_KEY:
+        headers["Authorization"] = f"Bearer {settings.CORE_API_KEY}"
+    return headers
+
+def _normalize_core_record(raw: dict) -> dict:
+    source = raw.get("_source", raw)
+    paper_id = source.get("id")
+    if paper_id is None:
+        paper_id = source.get("coreId")
+    if paper_id is None:
+        paper_id = raw.get("id")
+    title = source.get("title") or "No title available"
+    return {
+        "id": str(paper_id) if paper_id is not None else "",
+        "title": title,
+        "doi": source.get("doi"),
+        "abstract": source.get("abstract"),
+        "downloadUrl": source.get("downloadUrl"),
+        "sourceFulltextUrls": source.get("sourceFulltextUrls") or source.get("fullTextIdentifiers") or []
+    }
+
+async def search_core_papers(core_query: str, max_results: int = 3):
     """
-    Hits the arXiv API with our translated boolean string and returns paper metadata.
-    Includes strict rate-limiting compliance to prevent 429 errors.
+    Hits the CORE API with the translated query and returns normalized paper metadata.
     """
-    url = "https://export.arxiv.org/api/query"
+    url = CORE_SEARCH_URL
     
     params = {
-        "search_query": arxiv_query,
-        "start": 0,
-        "max_results": max_results
+        "q": core_query,
+        "offset": 0,
+        "limit": max_results
     }
 
-    # 1. Be polite: ArXiv demands custom User-Agents!
-    headers = {
-        "User-Agent": "ArXivGrapher_DevBot/1.0 (mailto:saketishaan123@gmail.com)"
-    }
+    headers = _get_core_headers()
 
     try:
-        # 2. Force a safety delay to prevent React Strict Mode double-fetches from triggering a 429
-        print("⏳ Waiting 3.1 seconds to comply with arXiv rate limits...")
-        await asyncio.sleep(3.1)
-        
-        # 3. Pass the headers into the httpx client
         async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
             response = await client.get(url, params=params)
-            
-            # If we STILL get a 429, catch it gracefully without crashing
-            if response.status_code == 429:
-                print("🔴 ArXiv rate limit hit! We are temporarily blocked.")
-                return []
-                
             response.raise_for_status()
             
     except httpx.RequestError as e:
-        print(f"⚠️ Network error while contacting arXiv: {e}")
+        print(f"⚠️ Network error while contacting CORE: {e}")
         return []
     except httpx.HTTPStatusError as e:
-        print(f"⚠️ Bad response from arXiv: {e}")
+        print(f"⚠️ Bad response from CORE: {e}")
         return []
 
-    # Parse XML safely
     try:
-        root = ET.fromstring(response.text)
-    except ET.ParseError as e:
-        print(f"⚠️ Failed to parse XML: {e}")
+        payload = response.json()
+    except ValueError as e:
+        print(f"⚠️ Failed to parse CORE response JSON: {e}")
         return []
 
-    ns = {'atom': 'http://www.w3.org/2005/Atom'}
+    # Expected CORE v3 structure is {"results": [...]}; keep additional defensive fallbacks
+    # for integrations/proxies that can wrap the same record list under "data" or "hits.hits".
+    records = payload.get("results")
+    if records is None and isinstance(payload.get("data"), list):
+        records = payload.get("data")
+    if records is None and isinstance(payload.get("hits"), dict):
+        records = payload.get("hits", {}).get("hits")
+    if not isinstance(records, list):
+        return []
+
     papers = []
-
-    for entry in root.findall('atom:entry', ns):
+    for record in records:
         try:
-            id_elem = entry.find('atom:id', ns)
-            if id_elem is None or id_elem.text is None:
+            normalized = _normalize_core_record(record)
+            if not normalized["id"]:
                 continue
-            paper_id = id_elem.text.split('/abs/')[-1]
-
-            title_elem = entry.find('atom:title', ns)
-            title = title_elem.text.replace('\n', ' ').strip() if title_elem is not None and title_elem.text else "No title available"
-
-            papers.append({
-                "id": paper_id,
-                "title": title
-            })
+            papers.append(normalized)
         except Exception as e:
             print(f"⚠️ Skipping malformed entry: {e}")
             continue
 
     return papers
+
+async def search_papers(query: str, max_results: int = 3):
+    """
+    Deprecated backward-compatible alias. Use search_core_papers instead.
+    """
+    return await search_core_papers(query, max_results=max_results)
 
 
 # ---------------------------------------------------------

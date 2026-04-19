@@ -1,8 +1,8 @@
 import asyncio
 from fastapi import APIRouter
 from worker.queue import paper_queue
-from services.arxiv import search_papers
-from services.cloud_llm import generate_arxiv_query
+from services.arxiv import search_core_papers
+from services.cloud_llm import generate_core_query
 from services.process_paper import process_single_paper
 from core.database import get_graph_for_papers
 
@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.get("/")
 async def root():
-    return {"message": "ArXiv Grapher API is running!"}
+    return {"message": "Scientific Literature Grapher API is running!"}
 
 @router.post("/test-queue/{paper_id}")
 async def add_to_queue(paper_id: str):
@@ -26,26 +26,26 @@ async def test_translation(query: str):
     """
     A temporary endpoint to test our Gemini query translator.
     """
-    arxiv_string = await generate_arxiv_query(query)
+    core_query = await generate_core_query(query)
     return {
         "user_input": query, 
-        "arxiv_query": arxiv_string
+        "core_query": core_query
     }
 
 @router.post("/search/")
 async def search_and_graph_papers(query: str):
     """
     1. Translates user query
-    2. Searches arXiv
+    2. Searches CORE
     3. Concurrently processes unindexed papers via Gemma
     4. Queries Neo4j for the final graph
     5. Returns exact Frontend JSON
     """
     print(f"🔎 Translating user query: '{query}'")
-    arxiv_string = await generate_arxiv_query(query)
+    core_query = await generate_core_query(query)
     
-    print(f"📚 Fetching top papers for: {arxiv_string}")
-    papers = await search_papers(arxiv_string, max_results=10)
+    print(f"📚 Fetching top papers for: {core_query}")
+    papers = await search_core_papers(core_query, max_results=10)
     
     # Extract IDs for our final query
     target_paper_ids = [p["id"] for p in papers]
@@ -62,7 +62,7 @@ async def search_and_graph_papers(query: str):
     graph_data = await get_graph_for_papers(target_paper_ids)
     
     return {
-        "search_query": arxiv_string,
+        "search_query": core_query,
         "results_found": len(papers),
         "graph": graph_data  # <--- Here is the exact {nodes: [], edges: []} for React!
     }

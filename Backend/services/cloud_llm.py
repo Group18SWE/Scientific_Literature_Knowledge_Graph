@@ -36,29 +36,29 @@ class PaperExtraction(BaseModel):
 # ---------------------------------------------------------------------------
 # CORE AI FUNCTIONS
 # ---------------------------------------------------------------------------
-async def generate_arxiv_query(user_input: str) -> str:
+async def generate_core_query(user_input: str) -> str:
     """
-    Translates a natural language user query into an optimized arXiv API boolean string.
+    Translates a natural language user query into an optimized CORE API query string.
     """
     prompt = f"""
-    You are an expert academic research assistant. Convert the following user query into an optimized arXiv API boolean search string.
+    You are an expert academic research assistant. Convert the following user query into an optimized CORE API query string.
     
-    CRITICAL RULES FOR ARXIV API:
-    1. NO EXACT PHRASES: Never put long phrases in quotes (e.g., avoid "handwriting detection"). Break them into individual AND keywords (e.g., all:handwriting AND all:detection).
-    2. USE SYNONYMS: Use OR statements grouped in parentheses for common synonyms to avoid missing papers (e.g., (all:handwriting OR all:handwritten)).
+    CRITICAL RULES FOR CORE API QUERY:
+    1. Use boolean operators AND/OR with parentheses for grouping.
+    2. Avoid field-specific prefixes unless required. Prefer general keyword queries.
     3. STRIP FILLER: Completely ignore conversational words like "latest", "recent", "papers", "show me", "about", "via", "using".
-    4. Use exact quotes ONLY for highly specific, unique named entities like "SIMCLR" or "ResNet".
+    4. Use exact quotes only for specific named entities or stable multi-word concepts.
     5. Return ONLY the search string without any quotes, markdown formatting, or conversational text.
     
     Examples:
     User: "latest research papers on handwriting detection via image processing"
-    Output: (all:handwriting OR all:handwritten) AND all:detection AND (all:image OR all:vision)
+    Output: (handwriting OR handwritten) AND detection AND (image OR vision)
     
     User: "Show me recent papers about graph neural networks"
-    Output: all:graph AND all:neural AND all:network
+    Output: graph AND neural AND network
     
     User: "LLMs used for healthcare and medicine"
-    Output: (all:LLM OR all:"large language model") AND (all:healthcare OR all:medicine)
+    Output: (LLM OR "large language model") AND (healthcare OR medicine)
     
     User: "{user_input}"
     Output:
@@ -66,7 +66,7 @@ async def generate_arxiv_query(user_input: str) -> str:
     
     try:
         response = await client.aio.models.generate_content(
-            model='gemini-3.1-flash-lite-preview', 
+            model='gemini-1.5-flash',
             contents=prompt
         )
         response_text = response.text
@@ -78,6 +78,12 @@ async def generate_arxiv_query(user_input: str) -> str:
     except Exception as e:
         logger.error(f"⚠️ Error communicating with Gemini for query translation: {e}")
         return "ERROR"
+
+async def generate_arxiv_query(user_input: str) -> str:
+    """
+    Deprecated backward-compatible alias. Use generate_core_query instead.
+    """
+    return await generate_core_query(user_input)
 
 async def extract_entities(parsed_text: str) -> dict:
     """
