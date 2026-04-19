@@ -1,5 +1,7 @@
 import asyncio
 from fastapi import APIRouter
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from worker.queue import paper_queue
 from services.arxiv import search_core_papers
 from services.cloud_llm import generate_core_query
@@ -61,9 +63,9 @@ async def search_and_graph_papers(query: str):
     # 5. Query Neo4j for the JSON the frontend wants
     graph_data = await get_graph_for_papers(target_paper_ids)
     print("ok 8===")
-    return {
+    response_payload = {
         "search_query": core_query,
         "results_found": len(papers),
         "graph": graph_data  # <--- Here is the exact {nodes: [], edges: []} for React!
     }
-
+    return JSONResponse(content=jsonable_encoder(response_payload))

@@ -7,6 +7,19 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+def _to_json_safe(value: Any) -> Any:
+    """
+    Recursively convert values to JSON-serializable primitives.
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _to_json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_json_safe(v) for v in value]
+    return str(value)
+
 class Neo4jConnection:
     def __init__(self):
         self.driver = None
@@ -248,7 +261,7 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
                         "id": p_id,
                         "type": paper_node.get("type", "paper"),
                         "label": paper_node.get("title", "Unknown Title"),
-                        "metadata": dict(paper_node)
+                        "metadata": _to_json_safe(dict(paper_node))
                     }
 
                 target_node = record.get("target")
@@ -262,7 +275,7 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
                             "id": t_id,
                             "type": target_node.get("type"),
                             "label": target_node.get("label"),
-                            "metadata": dict(target_node)
+                            "metadata": _to_json_safe(dict(target_node))
                         }
 
                     edges.append({
