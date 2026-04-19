@@ -1,7 +1,30 @@
 import httpx
 from core.config import settings
+import json
+from pathlib import Path
 
 CORE_SEARCH_URL = "https://api.core.ac.uk/v3/search/works"
+
+def _save_json_local(data: dict, filename: str = "core_records.json"):
+    file_path = Path(__file__).parent / filename
+
+    try:
+        # If file exists, append to existing list
+        if file_path.exists():
+            with open(file_path, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+            if not isinstance(existing, list):
+                existing = []
+        else:
+            existing = []
+
+        existing.append(data)
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        print(f"⚠️ Failed to save JSON: {e}")
 
 def _get_core_headers() -> dict:
     headers = {"Accept": "application/json"}
@@ -41,7 +64,7 @@ async def search_core_papers(core_query: str, max_results: int = 3):
     headers = _get_core_headers()
 
     try:
-        async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
+        async with httpx.AsyncClient(timeout=20.0, headers=headers, follow_redirects=True) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             
@@ -70,6 +93,7 @@ async def search_core_papers(core_query: str, max_results: int = 3):
 
     papers = []
     for record in records:
+        _save_json_local(record)
         try:
             normalized = _normalize_core_record(record)
             if not normalized["id"]:
