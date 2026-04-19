@@ -401,13 +401,26 @@ export const DUMMY_DATA = {
   meta: { total_results: 25 },
 };
 
+function parseMetadata(metadata) {
+  if (metadata && typeof metadata === 'object') return metadata;
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 export function normalizeGraphData(graph) {
   const nodes = Array.isArray(graph?.nodes)
     ? graph.nodes.map((node) => ({
         ...node,
         type: node?.type || 'paper',
         label: node?.label || node?.id || 'Unknown',
-        metadata: node?.metadata || {},
+        metadata: parseMetadata(node?.metadata),
       }))
     : [];
 

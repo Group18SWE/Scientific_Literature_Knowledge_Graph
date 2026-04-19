@@ -1,3 +1,4 @@
+import json
 import re
 from typing import Any, Optional
 from neo4j import AsyncGraphDatabase
@@ -50,6 +51,26 @@ def generate_node_id(prefix: str, label: str) -> str:
     return f"{prefix}_{clean_label}"
 
 
+def serialize_metadata(metadata: Optional[dict[str, Any]]) -> str:
+    if not isinstance(metadata, dict):
+        return "{}"
+    try:
+        return json.dumps(metadata, ensure_ascii=False, default=str)
+    except Exception:
+        return "{}"
+
+
+def deserialize_metadata(serialized: Any, fallback: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    if isinstance(serialized, str) and serialized.strip():
+        try:
+            parsed = json.loads(serialized)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return dict(fallback or {})
+
+
 # ---------------------------------------------------------------------------
 # DATABASE OPERATIONS
 # ---------------------------------------------------------------------------
@@ -80,6 +101,8 @@ async def save_graph_to_db(paper_id: str, entities: dict[str, Any], paper_metada
         
     if paper_metadata is None:
         paper_metadata = {}
+    serialized_paper_metadata = serialize_metadata(paper_metadata)
+    paper_title = str(paper_metadata.get("title", "")).strip()
 
     # Format models with our stable IDs
     models_data = []
@@ -100,9 +123,13 @@ async def save_graph_to_db(paper_id: str, entities: dict[str, Any], paper_metada
         # 1. MERGE Paper Node (Updates properties if it already exists)
         await tx.run("""
             MERGE (p:Paper {id: $paper_id})
-            SET p += $metadata,
-                p.type = 'paper'
-        """, paper_id=paper_id, metadata=paper_metadata)
+            SET p.type = 'paper',
+                p.title = CASE
+                    WHEN $paper_title <> '' THEN $paper_title
+                    ELSE coalesce(p.title, 'Unknown Title')
+                END,
+                p.metadata_json = $paper_metadata_json
+        """, paper_id=paper_id, paper_title=paper_title, paper_metadata_json=serialized_paper_metadata)
 
         # 2. Bulk insert Models & Relationships using UNWIND
         if models_data:
@@ -168,11 +195,16 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
             # Add the Paper node
             p_id = paper_node["id"]
             if p_id not in nodes:
+                paper_props = dict(paper_node)
+                paper_metadata = deserialize_metadata(
+                    paper_props.get("metadata_json"),
+                    fallback={k: v for k, v in paper_props.items() if k != "metadata_json"}
+                )
                 nodes[p_id] = {
                     "id": p_id,
                     "type": paper_node.get("type", "paper"),
-                    "label": paper_node.get("title", "Unknown Title"),
-                    "metadata": dict(paper_node)
+                    "label": paper_metadata.get("title") or paper_props.get("title", "Unknown Title"),
+                    "metadata": paper_metadata
                 }
 
             # 2. Check for existence of target and relationship
@@ -184,11 +216,16 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
                 
                 # Add the Target node if not already seen
                 if t_id not in nodes:
+                    target_props = dict(target_node)
+                    target_metadata = deserialize_metadata(
+                        target_props.get("metadata_json"),
+                        fallback={k: v for k, v in target_props.items() if k != "metadata_json"}
+                    )
                     nodes[t_id] = {
                         "id": t_id,
                         "type": target_node.get("type"),
-                        "label": target_node.get("label"),
-                        "metadata": dict(target_node)
+                        "label": target_props.get("label") or target_metadata.get("title") or target_props.get("id"),
+                        "metadata": target_metadata
                     }
 
                 # Add the Edge (Now safe because p_id and t_id are guaranteed)
