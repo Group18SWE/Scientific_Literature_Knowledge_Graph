@@ -38,6 +38,15 @@ def _fallback_text_from_metadata(paper_data: dict) -> str:
         return core_text
     return str(paper_data.get("abstract", "")).strip()
 
+def _fallback_text_from_response(payload: dict, paper_data: dict) -> str:
+    payload_text = _extract_text_from_core_record(payload)
+    if payload_text:
+        return payload_text
+    payload_abstract = str(payload.get("abstract", "")).strip()
+    if payload_abstract:
+        return payload_abstract
+    return _fallback_text_from_metadata(paper_data)
+
 async def fetch_and_parse_core_xml(paper_data: dict) -> str:
     """
     Fetches the paper record from CORE and extracts XML/text content for entity extraction.
@@ -66,9 +75,7 @@ async def fetch_and_parse_core_xml(paper_data: dict) -> str:
             payload = response.json()
             logger.info("✅ CORE record downloaded! Parsing XML/text...")
             
-            text_content = _extract_text_from_core_record(payload)
-            if not text_content:
-                text_content = str(payload.get("abstract", "")).strip() or _fallback_text_from_metadata(paper_data)
+            text_content = _fallback_text_from_response(payload, paper_data)
             
             logger.info(f"📝 Successfully extracted {len(text_content)} characters!")
             return text_content
