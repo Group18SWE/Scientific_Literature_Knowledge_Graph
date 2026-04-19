@@ -2,9 +2,6 @@ import { useState } from 'react';
 import { NODE_CONFIG } from './Legend';
 import { computeMetrics, getSimilarPapers } from '../services/api';
 
-const CURRENT_YEAR = new Date().getFullYear();
-void CURRENT_YEAR;
-
 function ImpactBar({ value, max, color }) {
   const pct = Math.min((value / Math.max(max, 1)) * 100, 100);
   return (
