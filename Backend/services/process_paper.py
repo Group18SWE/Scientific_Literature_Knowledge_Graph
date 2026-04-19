@@ -1,7 +1,7 @@
 # services/process_paper.py
 
 from core.database import check_if_paper_exists, save_graph_to_db
-from services.html_parser import fetch_and_parse_ar5iv
+from services.html_parser import fetch_and_parse_core_xml
 from services.cloud_llm import extract_entities
 
 async def process_single_paper(paper_data: dict):
@@ -15,8 +15,8 @@ async def process_single_paper(paper_data: dict):
         return paper_id 
         
     # 2. Fetch and Extract
-    print(f"🟡 {paper_id} not in DB. Fetching HTML...")
-    parsed_text = await fetch_and_parse_ar5iv(paper_id=paper_id)
+    print(f"🟡 {paper_id} not in DB. Fetching CORE XML/text...")
+    parsed_text = await fetch_and_parse_core_xml(paper_data=paper_data)
     
     if parsed_text:
         print(f"📝 Extracting entities for {paper_id}...")

@@ -1,6 +1,6 @@
 import asyncio
 from worker.queue import paper_queue
-from services.html_parser import fetch_and_parse_ar5iv
+from services.html_parser import fetch_and_parse_core_xml
 from services.cloud_llm import extract_entities
 
 # We will create these database functions in the next step!
@@ -28,9 +28,9 @@ async def background_worker():
                 paper_queue.task_done()
                 continue  # Skip the rest of the loop and grab the next paper
             
-            # 3. Paper is NOT in DB. Fetch the HTML text.
+            # 3. Paper is NOT in DB. Fetch CORE XML/text.
             print(f"🟡 Paper {paper_id} not found in DB. Fetching...")
-            parsed_text = await fetch_and_parse_ar5iv(paper_id=paper_id)
+            parsed_text = await fetch_and_parse_core_xml({"id": paper_id})
             
             if parsed_text:
                 print(f"📝 Extracted {len(parsed_text)} characters. Starting Entity Extraction...")
