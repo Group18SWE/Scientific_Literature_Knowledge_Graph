@@ -81,7 +81,7 @@ async def generate_core_query(user_input: str) -> str:
 
 async def generate_arxiv_query(user_input: str) -> str:
     """
-    Backward-compatible alias.
+    Deprecated backward-compatible alias. Use generate_core_query instead.
     """
     return await generate_core_query(user_input)
 

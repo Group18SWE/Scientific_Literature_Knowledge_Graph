@@ -11,7 +11,11 @@ def _get_core_headers() -> dict:
 
 def _normalize_core_record(raw: dict) -> dict:
     source = raw.get("_source", raw)
-    paper_id = source.get("id") or source.get("coreId") or raw.get("id")
+    paper_id = source.get("id")
+    if paper_id is None:
+        paper_id = source.get("coreId")
+    if paper_id is None:
+        paper_id = raw.get("id")
     title = source.get("title") or "No title available"
     return {
         "id": str(paper_id) if paper_id is not None else "",
@@ -77,11 +81,11 @@ async def search_core_papers(core_query: str, max_results: int = 3):
 
     return papers
 
-async def search_papers(arxiv_query: str, max_results: int = 3):
+async def search_papers(query: str, max_results: int = 3):
     """
-    Backward-compatible alias.
+    Deprecated backward-compatible alias. Use search_core_papers instead.
     """
-    return await search_core_papers(arxiv_query, max_results=max_results)
+    return await search_core_papers(query, max_results=max_results)
 
 
 # ---------------------------------------------------------

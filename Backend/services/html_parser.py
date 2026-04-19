@@ -86,6 +86,6 @@ async def fetch_and_parse_core_xml(paper_data: dict) -> str:
 
 async def fetch_and_parse_ar5iv(paper_id: str) -> str:
     """
-    Backward-compatible alias.
+    Deprecated backward-compatible alias. Use fetch_and_parse_core_xml instead.
     """
     return await fetch_and_parse_core_xml({"id": paper_id})
