@@ -60,6 +60,7 @@ async def search_and_graph_papers(query: str):
     
     # 5. Query Neo4j for the JSON the frontend wants
     graph_data = await get_graph_for_papers(target_paper_ids)
+    print("finished processing " + str(graph_data))
     
     return {
         "search_query": arxiv_string,

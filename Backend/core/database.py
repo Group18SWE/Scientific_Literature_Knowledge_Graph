@@ -1,7 +1,10 @@
 import re
+import logging
 from typing import Any, Optional
 from neo4j import AsyncGraphDatabase
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 class Neo4jConnection:
     def __init__(self):
@@ -142,8 +145,10 @@ async def save_graph_to_db(paper_id: str, entities: dict[str, Any], paper_metada
     # Execute the write transaction
     async with db.driver.session() as session:
         await session.execute_write(_insert_graph_tx)
+        
 async def get_graph_for_papers(paper_ids: list[str]) -> dict:
     if db.driver is None:
+        logger.warning("⚠️ Neo4j driver not initialized")
         return {"nodes": [], "edges": []}
 
     query = """
@@ -155,49 +160,63 @@ async def get_graph_for_papers(paper_ids: list[str]) -> dict:
     nodes = {}
     edges = []
 
-    async with db.driver.session() as session:
-        result = await session.run(query, paper_ids=paper_ids)
-        records = await result.data()
-        
+    try:
+        print(f"📊 Fetching graph for {len(paper_ids)} papers")
+
+        async with db.driver.session() as session:
+            result = await session.run(query, paper_ids=paper_ids)
+            records = await result.data()
+
+        print(f"📦 Retrieved {len(records)} records from Neo4j")
+
         for record in records:
-            paper_node = record.get("p")
-            # 1. Safety check: If for some reason 'p' is missing, skip this record
-            if not paper_node:
-                continue
+            try:
+                paper_node = record.get("p")
 
-            # Add the Paper node
-            p_id = paper_node["id"]
-            if p_id not in nodes:
-                nodes[p_id] = {
-                    "id": p_id,
-                    "type": paper_node.get("type", "paper"),
-                    "label": paper_node.get("title", "Unknown Title"),
-                    "metadata": dict(paper_node)
-                }
+                if not paper_node:
+                    print("⚠️ Missing paper node in record")
+                    continue
 
-            # 2. Check for existence of target and relationship
-            target_node = record.get("target")
-            rel = record.get("r")
+                p_id = paper_node["id"]
 
-            if target_node and rel:
-                t_id = target_node["id"]
-                
-                # Add the Target node if not already seen
-                if t_id not in nodes:
-                    nodes[t_id] = {
-                        "id": t_id,
-                        "type": target_node.get("type"),
-                        "label": target_node.get("label"),
-                        "metadata": dict(target_node)
+                if p_id not in nodes:
+                    nodes[p_id] = {
+                        "id": p_id,
+                        "type": paper_node.get("type", "paper"),
+                        "label": paper_node.get("title", "Unknown Title"),
+                        "metadata": dict(paper_node)
                     }
 
-                # Add the Edge (Now safe because p_id and t_id are guaranteed)
-                edges.append({
-                    "id": f"{p_id}-{t_id}",
-                    "source": p_id,
-                    "target": t_id,
-                    "type": rel[1] if isinstance(rel, tuple) else "CONNECTED_TO"
-                })
+                target_node = record.get("target")
+                rel = record.get("r")
+
+                if target_node and rel:
+                    t_id = target_node["id"]
+
+                    if t_id not in nodes:
+                        nodes[t_id] = {
+                            "id": t_id,
+                            "type": target_node.get("type"),
+                            "label": target_node.get("label"),
+                            "metadata": dict(target_node)
+                        }
+
+                    edges.append({
+                        "id": f"{p_id}-{t_id}",
+                        "source": p_id,
+                        "target": t_id,
+                        "type": rel[1] if isinstance(rel, tuple) else "CONNECTED_TO"
+                    })
+
+            except Exception as record_error:
+                logger.error(f"❌ Error processing record: {record_error}", exc_info=True)
+
+        print(f"✅ Graph built: {len(nodes)} nodes, {len(edges)} edges")
+
+    except Exception as e:
+        print("exception occurring??")
+        logger.error(f"🔥 Neo4j query failed: {e}", exc_info=True)
+        return {"nodes": [], "edges": []}
 
     return {
         "nodes": list(nodes.values()),

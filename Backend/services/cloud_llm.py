@@ -65,7 +65,10 @@ async def generate_arxiv_query(user_input: str) -> str:
         if response_text is None:
             raise Exception("Empty response from Gemini")
         else:
-            return response_text.strip()
+            cleaned_query = response_text.strip()
+            # Print the legible response to the terminal
+            print(f"--- Generated arXiv Query: {cleaned_query} ---")
+            return cleaned_query
     
     except Exception as e:
         logger.error(f"⚠️ Error communicating with Gemini for query translation: {e}")
