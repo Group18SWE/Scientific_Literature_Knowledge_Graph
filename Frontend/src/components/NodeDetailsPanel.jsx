@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { NODE_CONFIG } from './Legend';
 import { computeMetrics, getSimilarPapers } from '../services/api';
 
+const CURRENT_YEAR = new Date().getFullYear();
+void CURRENT_YEAR;
+
 function ImpactBar({ value, max, color }) {
   const pct = Math.min((value / Math.max(max, 1)) * 100, 100);
   return (
@@ -280,33 +283,6 @@ export default function NodeDetailsPanel({ node, neighborIds, graphData, onClose
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {Object.keys(m).length > 0 && (
-              <div>
-                <div className="section-label">Full Metadata</div>
-                <details>
-                  <summary style={{ cursor: 'pointer', fontSize: 11, color: 'var(--accent-blue)', marginBottom: 6 }}>
-                    View raw JSON
-                  </summary>
-                  <pre
-                    style={{
-                      margin: 0,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                      fontSize: 10,
-                      lineHeight: 1.5,
-                      color: 'var(--text-secondary)',
-                      background: 'var(--bg-elevated)',
-                      border: '1px solid var(--border-default)',
-                      borderRadius: 8,
-                      padding: 10,
-                    }}
-                  >
-                    {JSON.stringify(m, null, 2)}
-                  </pre>
-                </details>
               </div>
             )}
           </div>
