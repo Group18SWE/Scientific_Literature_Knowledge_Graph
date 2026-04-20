@@ -79,24 +79,47 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[api/routes.py]
-    B[services/cloud_llm.py]
-    C[services/arxiv.py]
-    D[services/process_paper.py]
-    E[services/html_parser.py]
-    F[core/database.py]
-    G[(Neo4j)]
+    subgraph API["api/routes.py"]
+        R1["search_and_graph_papers(query)"]
+        R2["process_papers_with_limit(papers)"]
+        R3["merge_search_metadata(graph_data, papers)"]
+    end
 
-    A --> B
-    A --> C
-    A --> D
-    A --> F
+    subgraph SVC["services"]
+        L1["cloud_llm.generate_arxiv_query(user_input)"]
+        A1["arxiv.search_papers(arxiv_query, max_results)"]
+        P1["process_paper.process_single_paper(paper_data)"]
+        H1["html_parser.fetch_and_parse_ar5iv(paper_id)"]
+        L2["cloud_llm.extract_entities(parsed_text)"]
+    end
 
-    D --> E
-    D --> B
-    D --> F
+    subgraph CORE["core"]
+        D1["database.check_if_paper_exists(paper_id)"]
+        D2["database.save_graph_to_db(paper_id, entities, metadata)"]
+        D3["database.get_graph_for_papers(paper_ids)"]
+    end
 
-    F --> G
+    EXT1["arXiv API"]
+    EXT2["ar5iv HTML"]
+    DB[("Neo4j")]
+
+    R1 -->|"translate query"| L1
+    R1 -->|"fetch papers"| A1
+    A1 -->|"HTTP XML query"| EXT1
+
+    R1 -->|"concurrent per-paper processing"| R2
+    R2 -->|"for each paper"| P1
+    P1 -->|"cache check"| D1
+    P1 -->|"fetch full text"| H1
+    H1 -->|"HTTP HTML fetch"| EXT2
+    P1 -->|"entity extraction"| L2
+    P1 -->|"persist graph entities + metadata"| D2
+
+    D1 --> DB
+    D2 --> DB
+    R1 -->|"load graph slice by paper ids"| D3
+    D3 --> DB
+    R1 -->|"merge metadata into graph nodes"| R3
 ```
 
 ### 4.2 Runtime lifecycle
