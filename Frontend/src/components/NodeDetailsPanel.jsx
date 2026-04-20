@@ -101,6 +101,7 @@ export default function NodeDetailsPanel({ node, neighborIds, graphData, onClose
       ['Published', m.publicationDate],
       ['Venue', m.publicationVenue?.name || m.venue],
       ['arXiv ID', m.arxivId],
+      ['GitHub', m.githubUrl],
       ['Citations', m.citationCount?.toLocaleString()],
       ['Influential', m.influentialCitationCount?.toLocaleString()],
       ['References', m.referenceCount?.toLocaleString()],
@@ -210,6 +211,30 @@ export default function NodeDetailsPanel({ node, neighborIds, graphData, onClose
                 style={{ fontSize: 10, color: 'var(--accent-blue)', textDecoration: 'none' }}>
                 PDF ↗
               </a>
+            )}
+            {(m.paperUrl || m.url || m.githubUrl) && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {(m.paperUrl || m.url) && (
+                  <a
+                    href={m.paperUrl || m.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: 10, color: 'var(--accent-blue)', textDecoration: 'none' }}
+                  >
+                    Paper ↗
+                  </a>
+                )}
+                {m.githubUrl && (
+                  <a
+                    href={m.githubUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: 10, color: '#10b981', textDecoration: 'none' }}
+                  >
+                    GitHub ↗
+                  </a>
+                )}
+              </div>
             )}
           </div>
         </div>

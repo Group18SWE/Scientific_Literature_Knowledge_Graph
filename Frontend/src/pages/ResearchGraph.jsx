@@ -46,8 +46,9 @@ export default function ResearchGraph({ darkMode }) {
       } else {
         setError('No results found. Showing demo data.');
       }
-    } catch {
-      setError('Backend unavailable — showing demo data.');
+    } catch (error) {
+      const isTimeout = error?.code === 'ECONNABORTED';
+      setError(isTimeout ? 'Search timed out. Backend is still working, so try again in a moment.' : 'Backend unavailable - showing demo data.');
     } finally {
       setIsLoading(false);
     }
@@ -237,7 +238,7 @@ export default function ResearchGraph({ darkMode }) {
             value={apiQuery}
             onChange={(e) => setApiQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleApiSearch()}
-            placeholder="Search papers via Semantic Scholar..."
+            placeholder="Search papers via backend arXiv search..."
             style={{
               width: '100%', background: 'var(--bg-input)',
               border: '1px solid var(--border-default)',

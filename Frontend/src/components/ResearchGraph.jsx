@@ -1308,12 +1308,37 @@ export default function ResearchGraph() {
               </div>
             )}
 
+            {(selectedNode.metadata.paperUrl || selectedNode.metadata.url || selectedNode.metadata.githubUrl) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                {(selectedNode.metadata.paperUrl || selectedNode.metadata.url) && (
+                  <a
+                    href={selectedNode.metadata.paperUrl || selectedNode.metadata.url}
+                    target="_blank" rel="noreferrer"
+                    style={{ fontSize: 10, color: "#38bdf8", textDecoration: "none" }}
+                  >
+                    Open Paper ↗
+                  </a>
+                )}
+                {selectedNode.metadata.githubUrl && (
+                  <a
+                    href={selectedNode.metadata.githubUrl}
+                    target="_blank" rel="noreferrer"
+                    style={{ fontSize: 10, color: "#22c55e", textDecoration: "none" }}
+                  >
+                    GitHub ↗
+                  </a>
+                )}
+              </div>
+            )}
+
             {/* Abstract */}
             {selectedNode.metadata.abstract && (
               <div>
                 <div style={{ fontSize: 9, color: "#1e3a5f", letterSpacing: "0.15em", marginBottom: 8, fontWeight: 600 }}>ABSTRACT</div>
                 <p style={{ fontSize: 11, color: "#475569", lineHeight: 1.7, margin: 0 }}>
-                  {selectedNode.metadata.abstract.slice(0, 240)}…
+                  {selectedNode.metadata.abstract.length > 240
+                    ? `${selectedNode.metadata.abstract.slice(0, 240)}...`
+                    : selectedNode.metadata.abstract}
                 </p>
               </div>
             )}

@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const SEARCH_TIMEOUT_MS = 180000;
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -446,7 +447,7 @@ export async function searchGraph({ query, yearFrom, yearTo, sortBy, order } = {
   const response = await axios.post(
     `${API_BASE_URL}/search/?${params.toString()}`,
     {},
-    { timeout: 30000 }
+    { timeout: SEARCH_TIMEOUT_MS }
   );
   return response.data;
 }
