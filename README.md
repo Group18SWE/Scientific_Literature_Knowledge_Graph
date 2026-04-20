@@ -421,13 +421,19 @@ Primary runtime libraries used directly in code paths include:
 
 ## 11) Run Instructions
 
+### Cloning the Github Repository
+
+```bash
+git clone https://github.com/Group18SWE/Scientific_Literature_Knowledge_Graph.git
+```
+
 ### Backend
 
 ```bash
-cd Backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cd Backend
 uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -435,7 +441,7 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 ```bash
 cd Frontend
-npm ci
+npm install
 npm run dev
 ```
 
