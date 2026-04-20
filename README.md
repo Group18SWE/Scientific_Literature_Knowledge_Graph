@@ -421,7 +421,7 @@ Primary runtime libraries used directly in code paths include:
 
 ## 11) Run Instructions
 
-### Cloning the Github Repository
+### Cloning the GitHub Repository:-
 
 ```bash
 git clone https://github.com/Group18SWE/Scientific_Literature_Knowledge_Graph.git
@@ -436,6 +436,9 @@ pip install -r requirements.txt
 cd Backend
 uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
+### Note-
+You need to get environmental variables like API keys into the backend for running it.
+Like your Gemini API Key and Neo4j credentials. 
 
 ### Frontend
 
