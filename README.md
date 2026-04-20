@@ -114,15 +114,15 @@ sequenceDiagram
 
 ## Setup Instructions
 
-## 1) Prerequisites
+### 1) Prerequisites
 
 - Python 3.10+
 - Node.js 18+
 - A running Neo4j instance
 
-## 2) Environment Variables (Backend)
+### 2) Environment Variables (Backend)
 
-Create `/home/runner/work/Scientific_Literature_Knowledge_Graph/Scientific_Literature_Knowledge_Graph/Backend/.env`:
+Create `Backend/.env`:
 
 ```env
 NEO4J_URI=bolt://<host>:7687
@@ -133,22 +133,24 @@ GEMINI_API_KEY=<your_key>
 
 `NEO4J_USER` defaults to `neo4j` in code if not provided.
 
-## 3) Backend Install + Run
+### 3) Backend Install + Run
 
-From `/home/runner/work/Scientific_Literature_Knowledge_Graph/Scientific_Literature_Knowledge_Graph/Backend`:
+From repository root:
 
 ```bash
+cd Backend
 python -m venv .venv
 source .venv/bin/activate
 pip install fastapi uvicorn neo4j python-dotenv httpx beautifulsoup4 lxml pydantic google-genai glmocr
 uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-## 4) Frontend Install + Run
+### 4) Frontend Install + Run
 
-From `/home/runner/work/Scientific_Literature_Knowledge_Graph/Scientific_Literature_Knowledge_Graph/Frontend/Frontend`:
+From repository root:
 
 ```bash
+cd Frontend/Frontend
 npm ci
 npm run dev
 ```
@@ -160,7 +162,7 @@ To override, set:
 VITE_API_BASE_URL=http://<backend-host>:<port>
 ```
 
-## 5) Optional Frontend Checks
+### 5) Optional Frontend Checks
 
 From `Frontend/Frontend`:
 
