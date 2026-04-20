@@ -19,7 +19,13 @@ A full-stack application that searches arXiv papers, extracts model/dataset enti
 
 ```mermaid
 flowchart TD
-    User --> Frontend --> Backend --> ExternalAPI --> Database --> Backend --> Frontend
+    User --> Frontend
+    Frontend --> Backend
+    Backend --> ExternalAPI
+    ExternalAPI --> Backend
+    Backend --> Database
+    Database --> Backend
+    Backend --> Frontend
 ```
 
 ### Data Pipeline
