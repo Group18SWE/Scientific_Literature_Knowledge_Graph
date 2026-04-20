@@ -162,7 +162,7 @@ npm run dev
 ```
 
 The frontend expects backend at `http://127.0.0.1:8000` by default.  
-To override, set:
+To override, set `VITE_API_BASE_URL` in `Frontend/Frontend/.env.local`:
 
 ```bash
 VITE_API_BASE_URL=http://<backend-host>:<port>
