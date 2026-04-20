@@ -4,57 +4,57 @@ const FEATURES = [
   {
     icon: '⬡',
     title: 'Interactive Graph Visualization',
-    desc: 'Explore a live force-directed D3 graph linking papers, models, datasets, and authors. Drag, zoom, and double-click to focus any subgraph.',
+    desc: 'Explore a live force-directed D3 graph that connects papers, authors, ML models, datasets, citations, and extracted relationships.',
   },
   {
     icon: '⌕',
-    title: 'Semantic Paper Search',
-    desc: 'Search the Semantic Scholar corpus in natural language. The backend translates your query and returns real academic papers — not just dummy data.',
+    title: 'Multi-Source Paper Intake',
+    desc: 'Use a graph-ready schema for literature records from arXiv, OpenAlex, CORE, and Semantic Scholar, with source metadata kept consistent across the UI.',
   },
   {
     icon: '⚙',
     title: 'Automated Knowledge Extraction',
-    desc: 'GenAI reads each paper\'s full text and extracts the ML models and datasets it uses, building graph edges automatically via Neo4j.',
+    desc: 'GenAI reads available full text and extracts the models and datasets used in each paper, turning raw literature into structured graph nodes.',
   },
   {
     icon: '⊞',
-    title: 'Advanced Filtering',
-    desc: 'Filter by year range, citation threshold, venue, fields of study, authors, access type, and all edge types — all in real time.',
+    title: 'Research-Focused Filtering',
+    desc: 'Filter by paper type, year, citation count, venue, field, author, access status, and relationship type while the graph updates in real time.',
   },
   {
     icon: '⚡',
     title: 'Derived Metrics & Ranking',
-    desc: 'Every paper gets an Impact Score, Citation Density, and Recency Score. Sort by any metric to surface what matters most to you.',
+    desc: 'Rank papers by citations, influential citations, graph degree, impact score, citation density, recency, or title to surface what matters fastest.',
   },
   {
     icon: '↓',
     title: 'Export & Bookmarks',
-    desc: 'Download visible graphs as JSON or CSV. Bookmark nodes for later. Top-K mode surfaces the most influential papers at a glance.',
+    desc: 'Download the visible graph as JSON or CSV, bookmark useful nodes, reset to demo data, and use Top-K mode for quick high-impact views.',
   },
 ];
 
 const HOW_IT_WORKS = [
-  { step: '01', title: 'Enter a Query', desc: 'Type any natural language query like "vision transformers for image classification" in the search bar.' },
-  { step: '02', title: 'Semantic Scholar Search', desc: 'Your query is translated into an optimized keyword search and sent to the Semantic Scholar Graph API.' },
-  { step: '03', title: 'HTML Extraction', desc: 'For each paper with an arXiv ID, the full HTML text is fetched from ar5iv and passed to GenAI for entity extraction.' },
-  { step: '04', title: 'Graph Construction', desc: 'Extracted models and datasets are merged into Neo4j — duplicates automatically deduplicated with MERGE.' },
-  { step: '05', title: 'Interactive Exploration', desc: 'The resulting knowledge graph is returned and rendered live. Click nodes to explore relationships, filter, and export.' },
+  { step: '01', title: 'Start With Literature', desc: 'Search a topic or load paper metadata from supported research sources such as arXiv, OpenAlex, CORE, and Semantic Scholar.' },
+  { step: '02', title: 'Normalize Paper Metadata', desc: 'Titles, authors, venues, years, abstracts, open-access links, citations, and source identifiers are shaped into one frontend schema.' },
+  { step: '03', title: 'Extract Full-Text Signals', desc: 'When arXiv full text is available, ar5iv HTML is parsed and sent through GenAI to identify models, datasets, and experiment context.' },
+  { step: '04', title: 'Build the Knowledge Graph', desc: 'Papers, authors, models, and datasets are stored in Neo4j with relationships such as uses_model, uses_dataset, cites, and written_by.' },
+  { step: '05', title: 'Explore and Export', desc: 'The graph renders instantly with filters, ranking controls, node details, bookmarks, Top-K views, and JSON or CSV export.' },
 ];
 
 const TECH_STACK = [
   { name: 'React + D3.js', desc: 'Force-directed graph with zoom, drag, hover tooltips, and glow effects', color: '#5b9df9' },
   { name: 'FastAPI',       desc: 'Async Python backend with concurrent paper processing', color: '#10b981' },
   { name: 'Neo4j AuraDB',  desc: 'Graph database storing papers, models, datasets, and relationships', color: '#fb923c' },
-  { name: 'Semantic Scholar', desc: 'Academic paper search API with citation metrics and metadata', color: '#f59e0b' },
-  { name: 'Google GenAI',  desc: 'Gemma model extracts structured entities from raw paper text', color: '#22d3ee' },
-  { name: 'ar5iv / arXiv', desc: 'HTML versions of arXiv papers for full-text extraction', color: '#a3e635' },
+  { name: 'OpenAlex + CORE + arXiv + Semantic Scholar', desc: 'Compatible metadata sources for papers, authors, identifiers, links, and citation context', color: '#f59e0b' },
+  { name: 'Google GenAI',  desc: 'Gemma extracts structured model and dataset entities from paper text', color: '#22d3ee' },
+  { name: 'ar5iv / arXiv', desc: 'Live arXiv search and HTML full-text extraction for processable preprints', color: '#a3e635' },
 ];
 
 const STATS = [
-  { value: '200M+', label: 'Papers Indexed (Semantic Scholar)' },
-  { value: '4',     label: 'Node Types: Paper, Model, Dataset, Author' },
-  { value: '5',     label: 'Edge Types Extracted' },
-  { value: '3',     label: 'Derived Metrics per Node' },
+  { value: '8',     label: 'Demo Papers Ready to Explore' },
+  { value: '7',     label: 'Model Nodes in the Sample Graph' },
+  { value: '8',     label: 'Dataset Nodes in the Sample Graph' },
+  { value: '4',     label: 'Core Node Types: Paper, Author, Model, Dataset' },
 ];
 
 export default function Landing({ darkMode }) {
@@ -102,8 +102,8 @@ export default function Landing({ darkMode }) {
             fontSize: 17, color: 'var(--text-secondary)', maxWidth: 580,
             margin: '0 auto 36px', lineHeight: 1.65,
           }}>
-            An interactive knowledge graph explorer for scientific literature. Powered by
-            Semantic Scholar, Neo4j, and GenAI extraction.
+            An explanatory knowledge graph for scientific literature that connects source metadata,
+            full-text extraction, models, datasets, citations, and authors in one explorable workspace.
           </p>
 
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -184,7 +184,7 @@ export default function Landing({ darkMode }) {
         </section>
 
         <section style={{ marginBottom: 80 }}>
-          <SectionHeader title="Built for Researchers" sub="Everything you need to navigate the scientific literature landscape." />
+          <SectionHeader title="Built for Research Mapping" sub="From scattered paper metadata to a connected view of methods, datasets, authors, and evidence." />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
             {FEATURES.map(({ icon, title, desc }) => (
               <div
@@ -219,7 +219,7 @@ export default function Landing({ darkMode }) {
         </section>
 
         <section style={{ marginBottom: 80 }}>
-          <SectionHeader title="How It Works" sub="From natural language query to interactive knowledge graph in seconds." />
+          <SectionHeader title="How It Works" sub="A complete path from literature records to an explainable graph you can inspect, filter, and export." />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {HOW_IT_WORKS.map(({ step, title, desc }, idx) => (
               <div key={step} style={{
@@ -276,7 +276,7 @@ export default function Landing({ darkMode }) {
             Ready to explore?
           </h2>
           <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 28, maxWidth: 460, margin: '0 auto 28px' }}>
-            Dive into the knowledge graph and discover the connections that shape modern machine learning.
+            Open the graph explorer to inspect papers, extracted models, datasets, authors, citation links, and the evidence structure behind a research area.
           </p>
           <button
             onClick={() => navigate('/graph')}
@@ -296,7 +296,7 @@ export default function Landing({ darkMode }) {
 
         <footer style={{ marginTop: 64, paddingTop: 32, borderTop: '1px solid var(--border-subtle)', textAlign: 'center' }}>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-            Scientific Literature Knowledge Graph · Built with React, D3.js, FastAPI, Neo4j, and GenAI
+            Scientific Literature Knowledge Graph · Compatible with OpenAlex, CORE, arXiv, Semantic Scholar, Neo4j, and GenAI extraction
           </p>
         </footer>
       </div>
